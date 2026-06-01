@@ -13,6 +13,7 @@ The project is starting with the backend MVP:
 - Layered architecture
 - CRUD: categories, accounts and transactions
 - Monthly dashboard summary
+- React frontend with Vite, TypeScript, Tailwind CSS and Recharts
 
 ## Project Structure
 
@@ -24,12 +25,31 @@ finance-manager/
 │   ├── FinTrack.Domain/
 │   └── FinTrack.Infrastructure/
 ├── docs/
+├── frontend/
+│   └── fintrack-web/
 ├── infra/
 │   └── docker-compose.yml
 └── README.md
 ```
 
-## Running Locally
+## Running With Docker
+
+Start the full stack:
+
+```powershell
+docker compose -f infra/docker-compose.yml up --build
+```
+
+Services:
+
+- Frontend: `http://localhost:3000`
+- API: `http://localhost:5000`
+- Swagger: `http://localhost:5000/swagger`
+- PostgreSQL: `localhost:5432`
+
+In `Development`, the API applies EF Core migrations automatically on startup.
+
+## Running Locally For Development
 
 Start PostgreSQL:
 
@@ -44,7 +64,7 @@ dotnet restore
 dotnet build
 ```
 
-Apply database migrations:
+Apply database migrations when running the API outside Docker:
 
 ```powershell
 dotnet ef database update --project backend/FinTrack.Infrastructure --startup-project backend/FinTrack.Api
@@ -60,6 +80,26 @@ Swagger will be available at the URL printed by the API, usually:
 
 ```text
 https://localhost:7000/swagger
+```
+
+Run the frontend in another terminal:
+
+```powershell
+cd frontend/fintrack-web
+npm install
+npm run dev
+```
+
+The frontend expects the API at:
+
+```text
+https://localhost:7000
+```
+
+To override it, create `frontend/fintrack-web/.env` using `.env.example`:
+
+```text
+VITE_API_BASE_URL=https://localhost:7000
 ```
 
 ## Category Endpoints

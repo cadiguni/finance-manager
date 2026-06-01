@@ -10,6 +10,36 @@ services:
       - "5432:5432"
     volumes:
       - fintrack-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fintrack -d fintrack"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ..
+      dockerfile: backend/FinTrack.Api/Dockerfile
+    container_name: fintrack-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=fintrack;Username=fintrack;Password=fintrack
+    ports:
+      - "5000:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../frontend/fintrack-web
+      args:
+        VITE_API_BASE_URL: http://localhost:5000
+    container_name: fintrack-web
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
 
 volumes:
   fintrack-postgres-data:

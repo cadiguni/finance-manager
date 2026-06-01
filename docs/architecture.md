@@ -10,3 +10,5 @@ FinTrack starts with a layered backend architecture:
 The first MVP keeps the design simple. Controllers receive HTTP requests, call application services, and services use repository contracts. Infrastructure implements those contracts with EF Core.
 
 Authentication is planned for a later phase. Until then, the API uses a fixed demo user id so the data model is already multi-user without adding JWT complexity too early.
+
+The frontend is a Vite React application under `frontend/fintrack-web`. It consumes the API through `src/api.ts` and currently exposes the first portfolio screens: monthly dashboard, transactions table and a transaction creation form.
