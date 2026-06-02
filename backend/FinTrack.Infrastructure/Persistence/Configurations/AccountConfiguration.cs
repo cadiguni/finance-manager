@@ -1,4 +1,5 @@
 using FinTrack.Domain.Entities;
+using FinTrack.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -26,5 +27,25 @@ public sealed class AccountConfiguration : IEntityTypeConfiguration<Account>
             .WithMany()
             .HasForeignKey(account => account.UserId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasData(
+            new Account
+            {
+                Id = DemoSeedIds.MainAccountId,
+                UserId = DemoSeedIds.UserId,
+                Name = "Conta Principal",
+                Type = AccountType.BankAccount,
+                InitialBalance = 2500m,
+                CreatedAt = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new Account
+            {
+                Id = DemoSeedIds.CashAccountId,
+                UserId = DemoSeedIds.UserId,
+                Name = "Carteira",
+                Type = AccountType.Cash,
+                InitialBalance = 300m,
+                CreatedAt = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
     }
 }

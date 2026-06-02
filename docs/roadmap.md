@@ -11,6 +11,8 @@
 - Basic React frontend
 - Docker Compose
 - README with local setup
+- Unit tests for application services
+- Initial GitHub Actions CI
 
 ## Phase 2
 

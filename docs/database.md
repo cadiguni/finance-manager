@@ -22,3 +22,5 @@ The monthly dashboard is computed from transactions in the selected month:
 - expenses decrease the balance;
 - paid and unpaid expenses are summarized separately;
 - category summaries group transactions by category.
+
+Development seed data is inserted through EF Core migrations for the fixed demo user. It includes default accounts, categories and sample June 2026 transactions so a fresh environment has data for the dashboard.

@@ -46,5 +46,64 @@ public sealed class TransactionConfiguration : IEntityTypeConfiguration<Transact
             .WithMany(rule => rule.Transactions)
             .HasForeignKey(transaction => transaction.RecurringRuleId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        builder.HasData(
+            new Transaction
+            {
+                Id = DemoSeedIds.SalaryTransactionId,
+                UserId = DemoSeedIds.UserId,
+                AccountId = DemoSeedIds.MainAccountId,
+                CategoryId = DemoSeedIds.SalaryCategoryId,
+                Description = "Salario mensal",
+                Amount = 6500m,
+                Type = Domain.Enums.TransactionType.Income,
+                Date = new DateOnly(2026, 6, 5),
+                IsPaid = true,
+                PaymentDate = new DateOnly(2026, 6, 5),
+                CreatedAt = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new Transaction
+            {
+                Id = DemoSeedIds.GroceriesTransactionId,
+                UserId = DemoSeedIds.UserId,
+                AccountId = DemoSeedIds.MainAccountId,
+                CategoryId = DemoSeedIds.FoodCategoryId,
+                Description = "Mercado",
+                Amount = 420.75m,
+                Type = Domain.Enums.TransactionType.Expense,
+                Date = new DateOnly(2026, 6, 7),
+                DueDate = new DateOnly(2026, 6, 7),
+                IsPaid = true,
+                PaymentDate = new DateOnly(2026, 6, 7),
+                CreatedAt = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new Transaction
+            {
+                Id = DemoSeedIds.RentTransactionId,
+                UserId = DemoSeedIds.UserId,
+                AccountId = DemoSeedIds.MainAccountId,
+                CategoryId = DemoSeedIds.HousingCategoryId,
+                Description = "Aluguel",
+                Amount = 1800m,
+                Type = Domain.Enums.TransactionType.Expense,
+                Date = new DateOnly(2026, 6, 10),
+                DueDate = new DateOnly(2026, 6, 10),
+                IsPaid = false,
+                CreatedAt = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new Transaction
+            {
+                Id = DemoSeedIds.TransportTransactionId,
+                UserId = DemoSeedIds.UserId,
+                AccountId = DemoSeedIds.CashAccountId,
+                CategoryId = DemoSeedIds.TransportCategoryId,
+                Description = "Transporte semanal",
+                Amount = 85.50m,
+                Type = Domain.Enums.TransactionType.Expense,
+                Date = new DateOnly(2026, 6, 12),
+                DueDate = new DateOnly(2026, 6, 12),
+                IsPaid = false,
+                CreatedAt = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
     }
 }

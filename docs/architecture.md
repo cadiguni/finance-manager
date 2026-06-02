@@ -11,4 +11,6 @@ The first MVP keeps the design simple. Controllers receive HTTP requests, call a
 
 Authentication is planned for a later phase. Until then, the API uses a fixed demo user id so the data model is already multi-user without adding JWT complexity too early.
 
-The frontend is a Vite React application under `frontend/fintrack-web`. It consumes the API through `src/api.ts` and currently exposes the first portfolio screens: monthly dashboard, transactions table and a transaction creation form.
+The frontend is a Vite React application under `frontend/fintrack-web`. It consumes the API through `src/api.ts` and currently exposes the first portfolio screens: monthly dashboard, filtered transactions table, account management, category management, transaction creation, transaction editing, deletion and paid/pending status updates.
+
+The chart area is loaded lazily through `React.lazy`, keeping Recharts out of the initial JavaScript chunk.

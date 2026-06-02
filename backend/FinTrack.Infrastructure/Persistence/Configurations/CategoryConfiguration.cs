@@ -1,4 +1,5 @@
 using FinTrack.Domain.Entities;
+using FinTrack.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -30,5 +31,39 @@ public sealed class CategoryConfiguration : IEntityTypeConfiguration<Category>
             .WithMany(category => category.Subcategories)
             .HasForeignKey(category => category.ParentCategoryId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasData(
+            new Category
+            {
+                Id = DemoSeedIds.SalaryCategoryId,
+                UserId = DemoSeedIds.UserId,
+                Name = "Salario",
+                Type = CategoryType.Income,
+                CreatedAt = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new Category
+            {
+                Id = DemoSeedIds.FoodCategoryId,
+                UserId = DemoSeedIds.UserId,
+                Name = "Alimentacao",
+                Type = CategoryType.Expense,
+                CreatedAt = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new Category
+            {
+                Id = DemoSeedIds.HousingCategoryId,
+                UserId = DemoSeedIds.UserId,
+                Name = "Moradia",
+                Type = CategoryType.Expense,
+                CreatedAt = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new Category
+            {
+                Id = DemoSeedIds.TransportCategoryId,
+                UserId = DemoSeedIds.UserId,
+                Name = "Transporte",
+                Type = CategoryType.Expense,
+                CreatedAt = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
     }
 }

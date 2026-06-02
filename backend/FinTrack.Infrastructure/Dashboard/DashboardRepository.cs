@@ -38,31 +38,35 @@ public sealed class DashboardRepository : IDashboardRepository
             .Where(transaction => transaction.Type == TransactionType.Expense)
             .SumAsync(transaction => transaction.Amount, cancellationToken);
 
-        var expensesByCategory = await transactions
+        var expensesByCategoryRows = await transactions
             .Where(transaction => transaction.Type == TransactionType.Expense)
             .GroupBy(transaction => new
             {
                 transaction.CategoryId,
                 CategoryName = transaction.Category!.Name
             })
-            .Select(group => new CategorySummaryDto(
+            .Select(group => new
+            {
                 group.Key.CategoryId,
                 group.Key.CategoryName,
-                group.Sum(transaction => transaction.Amount)))
+                Total = group.Sum(transaction => transaction.Amount)
+            })
             .OrderByDescending(summary => summary.Total)
             .ToListAsync(cancellationToken);
 
-        var incomeByCategory = await transactions
+        var incomeByCategoryRows = await transactions
             .Where(transaction => transaction.Type == TransactionType.Income)
             .GroupBy(transaction => new
             {
                 transaction.CategoryId,
                 CategoryName = transaction.Category!.Name
             })
-            .Select(group => new CategorySummaryDto(
+            .Select(group => new
+            {
                 group.Key.CategoryId,
                 group.Key.CategoryName,
-                group.Sum(transaction => transaction.Amount)))
+                Total = group.Sum(transaction => transaction.Amount)
+            })
             .OrderByDescending(summary => summary.Total)
             .ToListAsync(cancellationToken);
 
@@ -88,8 +92,12 @@ public sealed class DashboardRepository : IDashboardRepository
             totalIncome,
             totalExpense,
             totalIncome - totalExpense,
-            expensesByCategory,
-            incomeByCategory,
+            expensesByCategoryRows
+                .Select(summary => new CategorySummaryDto(summary.CategoryId, summary.CategoryName, summary.Total))
+                .ToList(),
+            incomeByCategoryRows
+                .Select(summary => new CategorySummaryDto(summary.CategoryId, summary.CategoryName, summary.Total))
+                .ToList(),
             upcomingPayments,
             paidExpenses,
             unpaidExpenses);

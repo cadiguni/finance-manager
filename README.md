@@ -14,6 +14,7 @@ The project is starting with the backend MVP:
 - CRUD: categories, accounts and transactions
 - Monthly dashboard summary
 - React frontend with Vite, TypeScript, Tailwind CSS and Recharts
+- Frontend forms for accounts, categories and transactions
 
 ## Project Structure
 
@@ -101,6 +102,50 @@ To override it, create `frontend/fintrack-web/.env` using `.env.example`:
 ```text
 VITE_API_BASE_URL=https://localhost:7000
 ```
+
+The first frontend screen includes:
+
+- monthly dashboard cards and charts;
+- transactions table;
+- transaction edit, delete and paid/pending actions;
+- visual transaction filters by date, type, account, category and status;
+- account creation form;
+- account listing, edit and delete actions;
+- category creation form;
+- category listing, edit and delete actions;
+- transaction creation form.
+
+The application also includes demo seed data for the development user:
+
+- default accounts;
+- default income and expense categories;
+- sample June 2026 transactions.
+
+## Tests
+
+Run backend tests:
+
+```powershell
+dotnet test
+```
+
+Current unit coverage focuses on:
+
+- `AccountService`
+- `TransactionService`
+
+## CI
+
+The repository includes a GitHub Actions workflow at `.github/workflows/ci.yml`.
+
+It runs:
+
+- `dotnet restore`
+- `dotnet build`
+- `dotnet test`
+- `npm ci`
+- `npm run build`
+- `docker compose build`
 
 ## Category Endpoints
 

@@ -1,60 +1,83 @@
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import {
   ArrowDownCircle,
   ArrowUpCircle,
-  Banknote,
   CalendarDays,
+  CheckCircle2,
   Loader2,
+  Pencil,
   Plus,
   RefreshCcw,
+  Trash2,
   Wallet,
+  X,
 } from 'lucide-react'
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
-import {
-  api,
-} from './api'
+import { api } from './api'
 import type {
   Account,
+  AccountType,
   Category,
+  CategoryType,
+  CreateAccountRequest,
+  CreateCategoryRequest,
   CreateTransactionRequest,
   MonthlySummary,
   Transaction,
+  TransactionType,
 } from './api'
 
-type TransactionType = 'Income' | 'Expense'
+type TransactionFilters = {
+  startDate: string
+  endDate: string
+  categoryId: string
+  accountId: string
+  type: TransactionType | ''
+  isPaid: '' | 'true' | 'false'
+}
 
 const currency = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
   currency: 'BRL',
 })
 
-const currentDate = new Date()
-const currentYear = currentDate.getFullYear()
-const currentMonth = currentDate.getMonth() + 1
+const today = new Date()
+const currentYear = today.getFullYear()
+const currentMonth = today.getMonth() + 1
+const todayText = today.toISOString().slice(0, 10)
 
-const colors = ['#0f766e', '#2563eb', '#7c3aed', '#db2777', '#ea580c', '#65a30d']
+const Charts = lazy(() => import('./components/Charts'))
 
-const emptyForm: CreateTransactionRequest = {
+const emptyTransactionForm: CreateTransactionRequest = {
   accountId: '',
   categoryId: '',
   description: '',
   amount: 0,
   type: 'Expense',
-  date: currentDate.toISOString().slice(0, 10),
+  date: todayText,
   dueDate: '',
   isPaid: false,
   paymentDate: '',
+}
+
+const emptyAccountForm: CreateAccountRequest = {
+  name: '',
+  type: 'BankAccount',
+  initialBalance: 0,
+}
+
+const emptyCategoryForm: CreateCategoryRequest = {
+  name: '',
+  type: 'Expense',
+  parentCategoryId: null,
+}
+
+const initialFilters: TransactionFilters = {
+  startDate: `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`,
+  endDate: new Date(currentYear, currentMonth, 0).toISOString().slice(0, 10),
+  categoryId: '',
+  accountId: '',
+  type: '',
+  isPaid: '',
 }
 
 function App() {
@@ -62,30 +85,55 @@ function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [categories, setCategories] = useState<Category[]>([])
-  const [form, setForm] = useState<CreateTransactionRequest>(emptyForm)
+  const [transactionForm, setTransactionForm] =
+    useState<CreateTransactionRequest>(emptyTransactionForm)
+  const [accountForm, setAccountForm] = useState<CreateAccountRequest>(emptyAccountForm)
+  const [categoryForm, setCategoryForm] = useState<CreateCategoryRequest>(emptyCategoryForm)
+  const [filters, setFilters] = useState<TransactionFilters>(initialFilters)
   const [year, setYear] = useState(currentYear)
   const [month, setMonth] = useState(currentMonth)
+  const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null)
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null)
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [isSaving, setIsSaving] = useState(false)
+  const [isSavingTransaction, setIsSavingTransaction] = useState(false)
+  const [isSavingAccount, setIsSavingAccount] = useState(false)
+  const [isSavingCategory, setIsSavingCategory] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const accountById = useMemo(
+    () => new Map(accounts.map((account) => [account.id, account])),
+    [accounts],
+  )
+
+  const categoryById = useMemo(
+    () => new Map(categories.map((category) => [category.id, category])),
+    [categories],
+  )
 
   const selectedCategories = useMemo(() => {
     return categories.filter(
-      (category) => category.type === 'Both' || category.type === form.type,
+      (category) =>
+        category.type === 'Both' || category.type === transactionForm.type,
     )
-  }, [categories, form.type])
+  }, [categories, transactionForm.type])
 
   async function loadData() {
     setIsLoading(true)
     setError(null)
 
     try {
-      const startDate = `${year}-${String(month).padStart(2, '0')}-01`
-      const endDate = new Date(year, month, 0).toISOString().slice(0, 10)
       const [summaryData, transactionsData, accountsData, categoriesData] =
         await Promise.all([
           api.getMonthlySummary(year, month),
-          api.getTransactions({ startDate, endDate }),
+          api.getTransactions({
+            startDate: filters.startDate,
+            endDate: filters.endDate,
+            categoryId: filters.categoryId,
+            accountId: filters.accountId,
+            type: filters.type,
+            isPaid: filters.isPaid === '' ? '' : filters.isPaid === 'true',
+          }),
           api.getAccounts(),
           api.getCategories(),
         ])
@@ -103,32 +151,187 @@ function App() {
 
   useEffect(() => {
     void loadData()
-  }, [year, month])
+  }, [])
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  function applyMonthToFilters() {
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`
+    const endDate = new Date(year, month, 0).toISOString().slice(0, 10)
+    setFilters((current) => ({ ...current, startDate, endDate }))
+  }
+
+  async function handleSaveTransaction(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    setIsSaving(true)
+    setIsSavingTransaction(true)
     setError(null)
 
     try {
-      await api.createTransaction({
-        ...form,
-        amount: Number(form.amount),
-        dueDate: form.dueDate || null,
-        paymentDate: form.isPaid ? form.paymentDate || form.date : null,
-      })
+      const payload = {
+        ...transactionForm,
+        amount: Number(transactionForm.amount),
+        dueDate: transactionForm.dueDate || null,
+        paymentDate: transactionForm.isPaid
+          ? transactionForm.paymentDate || transactionForm.date
+          : null,
+      }
 
-      setForm({
-        ...emptyForm,
-        accountId: form.accountId,
-        categoryId: '',
-        date: form.date,
+      if (editingTransactionId) {
+        await api.updateTransaction(editingTransactionId, payload)
+      } else {
+        await api.createTransaction(payload)
+      }
+
+      setTransactionForm({
+        ...emptyTransactionForm,
+        accountId: transactionForm.accountId,
+        date: transactionForm.date,
       })
+      setEditingTransactionId(null)
       await loadData()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao salvar lançamento.')
+      setError(err instanceof Error ? err.message : 'Erro ao salvar lancamento.')
     } finally {
-      setIsSaving(false)
+      setIsSavingTransaction(false)
+    }
+  }
+
+  async function handleSaveAccount(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setIsSavingAccount(true)
+    setError(null)
+
+    try {
+      const payload = {
+        ...accountForm,
+        initialBalance: Number(accountForm.initialBalance),
+      }
+
+      if (editingAccountId) {
+        await api.updateAccount(editingAccountId, payload)
+      } else {
+        const account = await api.createAccount(payload)
+        setTransactionForm((current) => ({ ...current, accountId: account.id }))
+      }
+
+      setAccountForm(emptyAccountForm)
+      setEditingAccountId(null)
+      await loadData()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao salvar conta.')
+    } finally {
+      setIsSavingAccount(false)
+    }
+  }
+
+  async function handleSaveCategory(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setIsSavingCategory(true)
+    setError(null)
+
+    try {
+      if (editingCategoryId) {
+        await api.updateCategory(editingCategoryId, categoryForm)
+      } else {
+        const category = await api.createCategory(categoryForm)
+        setTransactionForm((current) => ({
+          ...current,
+          categoryId: category.id,
+          type: category.type === 'Income' ? 'Income' : current.type,
+        }))
+      }
+
+      setCategoryForm(emptyCategoryForm)
+      setEditingCategoryId(null)
+      await loadData()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao salvar categoria.')
+    } finally {
+      setIsSavingCategory(false)
+    }
+  }
+
+  function editTransaction(transaction: Transaction) {
+    setEditingTransactionId(transaction.id)
+    setTransactionForm({
+      accountId: transaction.accountId,
+      categoryId: transaction.categoryId,
+      description: transaction.description,
+      amount: transaction.amount,
+      type: transaction.type,
+      date: transaction.date,
+      dueDate: transaction.dueDate ?? '',
+      isPaid: transaction.isPaid,
+      paymentDate: transaction.paymentDate ?? '',
+    })
+  }
+
+  function editAccount(account: Account) {
+    setEditingAccountId(account.id)
+    setAccountForm({
+      name: account.name,
+      type: account.type,
+      initialBalance: account.initialBalance,
+    })
+  }
+
+  function editCategory(category: Category) {
+    setEditingCategoryId(category.id)
+    setCategoryForm({
+      name: category.name,
+      type: category.type,
+      parentCategoryId: category.parentCategoryId,
+    })
+  }
+
+  async function deleteTransaction(transaction: Transaction) {
+    if (!window.confirm(`Excluir o lancamento "${transaction.description}"?`)) {
+      return
+    }
+
+    await runAction(() => api.deleteTransaction(transaction.id), 'Erro ao excluir lancamento.')
+  }
+
+  async function deleteAccount(account: Account) {
+    if (!window.confirm(`Excluir a conta "${account.name}"?`)) {
+      return
+    }
+
+    await runAction(() => api.deleteAccount(account.id), 'Erro ao excluir conta.')
+  }
+
+  async function deleteCategory(category: Category) {
+    if (!window.confirm(`Excluir a categoria "${category.name}"?`)) {
+      return
+    }
+
+    await runAction(() => api.deleteCategory(category.id), 'Erro ao excluir categoria.')
+  }
+
+  async function togglePaid(transaction: Transaction) {
+    await runAction(
+      () =>
+        api.updateTransaction(transaction.id, {
+          accountId: transaction.accountId,
+          categoryId: transaction.categoryId,
+          description: transaction.description,
+          amount: transaction.amount,
+          type: transaction.type,
+          date: transaction.date,
+          dueDate: transaction.dueDate,
+          isPaid: !transaction.isPaid,
+          paymentDate: transaction.isPaid ? null : todayText,
+        }),
+      'Erro ao atualizar pagamento.',
+    )
+  }
+
+  async function runAction(action: () => Promise<void>, fallbackError: string) {
+    setError(null)
+
+    try {
+      await action()
+      await loadData()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : fallbackError)
     }
   }
 
@@ -162,6 +365,13 @@ function App() {
               onChange={(event) => setYear(Number(event.target.value))}
             />
             <button
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-100"
+              type="button"
+              onClick={applyMonthToFilters}
+            >
+              Usar mes
+            </button>
+            <button
               className="inline-flex items-center gap-2 rounded-md bg-slate-950 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
               type="button"
               onClick={() => void loadData()}
@@ -173,7 +383,7 @@ function App() {
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 lg:grid-cols-[1fr_380px]">
+      <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 lg:grid-cols-[1fr_390px]">
         <section className="space-y-6">
           {error && (
             <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -188,173 +398,79 @@ function App() {
           ) : (
             <>
               <SummaryCards summary={summary} />
-              <Charts summary={summary} />
-              <TransactionsTable transactions={transactions} />
+              <Suspense
+                fallback={
+                  <div className="h-72 rounded-md border border-slate-200 bg-white p-4 shadow-sm" />
+                }
+              >
+                <Charts summary={summary} />
+              </Suspense>
+              <TransactionFiltersPanel
+                accounts={accounts}
+                categories={categories}
+                filters={filters}
+                onChange={setFilters}
+                onSubmit={() => void loadData()}
+              />
+              <TransactionsTable
+                accountById={accountById}
+                categoryById={categoryById}
+                onDelete={deleteTransaction}
+                onEdit={editTransaction}
+                onTogglePaid={togglePaid}
+                transactions={transactions}
+              />
+              <ManageLists
+                accounts={accounts}
+                categories={categories}
+                onDeleteAccount={deleteAccount}
+                onDeleteCategory={deleteCategory}
+                onEditAccount={editAccount}
+                onEditCategory={editCategory}
+              />
             </>
           )}
         </section>
 
         <aside className="space-y-4">
-          <form
-            className="rounded-md border border-slate-200 bg-white p-4 shadow-sm"
-            onSubmit={(event) => void handleSubmit(event)}
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Novo lançamento</h2>
-              <Plus size={18} className="text-teal-700" />
-            </div>
+          <AccountForm
+            form={accountForm}
+            isEditing={Boolean(editingAccountId)}
+            isSaving={isSavingAccount}
+            onCancel={() => {
+              setEditingAccountId(null)
+              setAccountForm(emptyAccountForm)
+            }}
+            onChange={setAccountForm}
+            onSubmit={handleSaveAccount}
+          />
 
-            {!hasBaseData && (
-              <div className="mb-4 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
-                Cadastre ao menos uma conta e uma categoria pela API antes de lançar
-                transações.
-              </div>
-            )}
+          <CategoryForm
+            form={categoryForm}
+            isEditing={Boolean(editingCategoryId)}
+            isSaving={isSavingCategory}
+            onCancel={() => {
+              setEditingCategoryId(null)
+              setCategoryForm(emptyCategoryForm)
+            }}
+            onChange={setCategoryForm}
+            onSubmit={handleSaveCategory}
+          />
 
-            <div className="space-y-3">
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-700">Tipo</span>
-                <select
-                  className="w-full rounded-md border border-slate-300 px-3 py-2"
-                  value={form.type}
-                  onChange={(event) =>
-                    setForm({
-                      ...form,
-                      type: event.target.value as TransactionType,
-                      categoryId: '',
-                    })
-                  }
-                >
-                  <option value="Expense">Despesa</option>
-                  <option value="Income">Receita</option>
-                </select>
-              </label>
-
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-700">Descrição</span>
-                <input
-                  className="w-full rounded-md border border-slate-300 px-3 py-2"
-                  value={form.description}
-                  onChange={(event) => setForm({ ...form, description: event.target.value })}
-                  placeholder="Mercado, salário, aluguel..."
-                  required
-                />
-              </label>
-
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block text-sm">
-                  <span className="mb-1 block font-medium text-slate-700">Valor</span>
-                  <input
-                    className="w-full rounded-md border border-slate-300 px-3 py-2"
-                    min="0.01"
-                    step="0.01"
-                    type="number"
-                    value={form.amount || ''}
-                    onChange={(event) =>
-                      setForm({ ...form, amount: Number(event.target.value) })
-                    }
-                    required
-                  />
-                </label>
-
-                <label className="block text-sm">
-                  <span className="mb-1 block font-medium text-slate-700">Data</span>
-                  <input
-                    className="w-full rounded-md border border-slate-300 px-3 py-2"
-                    type="date"
-                    value={form.date}
-                    onChange={(event) => setForm({ ...form, date: event.target.value })}
-                    required
-                  />
-                </label>
-              </div>
-
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-700">Conta</span>
-                <select
-                  className="w-full rounded-md border border-slate-300 px-3 py-2"
-                  value={form.accountId}
-                  onChange={(event) => setForm({ ...form, accountId: event.target.value })}
-                  required
-                >
-                  <option value="">Selecione</option>
-                  {accounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-700">Categoria</span>
-                <select
-                  className="w-full rounded-md border border-slate-300 px-3 py-2"
-                  value={form.categoryId}
-                  onChange={(event) => setForm({ ...form, categoryId: event.target.value })}
-                  required
-                >
-                  <option value="">Selecione</option>
-                  {selectedCategories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block text-sm">
-                  <span className="mb-1 block font-medium text-slate-700">Vencimento</span>
-                  <input
-                    className="w-full rounded-md border border-slate-300 px-3 py-2"
-                    type="date"
-                    value={form.dueDate ?? ''}
-                    onChange={(event) => setForm({ ...form, dueDate: event.target.value })}
-                  />
-                </label>
-
-                <label className="flex items-end gap-2 pb-2 text-sm font-medium text-slate-700">
-                  <input
-                    checked={form.isPaid}
-                    className="h-4 w-4 rounded border-slate-300"
-                    type="checkbox"
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        isPaid: event.target.checked,
-                        paymentDate: event.target.checked ? form.date : '',
-                      })
-                    }
-                  />
-                  Pago
-                </label>
-              </div>
-
-              {form.isPaid && (
-                <label className="block text-sm">
-                  <span className="mb-1 block font-medium text-slate-700">Data de pagamento</span>
-                  <input
-                    className="w-full rounded-md border border-slate-300 px-3 py-2"
-                    type="date"
-                    value={form.paymentDate ?? ''}
-                    onChange={(event) =>
-                      setForm({ ...form, paymentDate: event.target.value })
-                    }
-                    required
-                  />
-                </label>
-              )}
-
-              <button
-                className="w-full rounded-md bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-                disabled={isSaving || !hasBaseData}
-                type="submit"
-              >
-                {isSaving ? 'Salvando...' : 'Salvar lançamento'}
-              </button>
-            </div>
-          </form>
+          <TransactionForm
+            accounts={accounts}
+            categories={selectedCategories}
+            form={transactionForm}
+            hasBaseData={hasBaseData}
+            isEditing={Boolean(editingTransactionId)}
+            isSaving={isSavingTransaction}
+            onCancel={() => {
+              setEditingTransactionId(null)
+              setTransactionForm(emptyTransactionForm)
+            }}
+            onChange={setTransactionForm}
+            onSubmit={handleSaveTransaction}
+          />
         </aside>
       </div>
     </main>
@@ -363,30 +479,10 @@ function App() {
 
 function SummaryCards({ summary }: { summary: MonthlySummary | null }) {
   const cards = [
-    {
-      label: 'Receitas',
-      value: summary?.totalIncome ?? 0,
-      icon: ArrowUpCircle,
-      className: 'text-emerald-700',
-    },
-    {
-      label: 'Despesas',
-      value: summary?.totalExpense ?? 0,
-      icon: ArrowDownCircle,
-      className: 'text-red-700',
-    },
-    {
-      label: 'Saldo',
-      value: summary?.balance ?? 0,
-      icon: Wallet,
-      className: 'text-slate-900',
-    },
-    {
-      label: 'Pendentes',
-      value: summary?.unpaidExpenses ?? 0,
-      icon: CalendarDays,
-      className: 'text-amber-700',
-    },
+    { label: 'Receitas', value: summary?.totalIncome ?? 0, icon: ArrowUpCircle, className: 'text-emerald-700' },
+    { label: 'Despesas', value: summary?.totalExpense ?? 0, icon: ArrowDownCircle, className: 'text-red-700' },
+    { label: 'Saldo', value: summary?.balance ?? 0, icon: Wallet, className: 'text-slate-900' },
+    { label: 'Pendentes', value: summary?.unpaidExpenses ?? 0, icon: CalendarDays, className: 'text-amber-700' },
   ]
 
   return (
@@ -407,117 +503,123 @@ function SummaryCards({ summary }: { summary: MonthlySummary | null }) {
   )
 }
 
-function Charts({ summary }: { summary: MonthlySummary | null }) {
-  const cashFlow = [
-    { name: 'Receitas', total: summary?.totalIncome ?? 0 },
-    { name: 'Despesas', total: summary?.totalExpense ?? 0 },
-  ]
-
-  const categoryData = summary?.expensesByCategory ?? []
-
+function TransactionFiltersPanel({
+  accounts,
+  categories,
+  filters,
+  onChange,
+  onSubmit,
+}: {
+  accounts: Account[]
+  categories: Category[]
+  filters: TransactionFilters
+  onChange: (filters: TransactionFilters) => void
+  onSubmit: () => void
+}) {
   return (
-    <div className="grid gap-4 xl:grid-cols-2">
-      <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-4 flex items-center gap-2">
-          <Banknote size={18} className="text-teal-700" />
-          <h2 className="font-semibold">Fluxo do mês</h2>
-        </div>
-        <div className="h-72">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={cashFlow}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="name" />
-              <YAxis tickFormatter={(value) => currency.format(Number(value))} width={90} />
-              <Tooltip formatter={(value) => currency.format(Number(value))} />
-              <Bar dataKey="total" radius={[6, 6, 0, 0]}>
-                {cashFlow.map((entry) => (
-                  <Cell
-                    key={entry.name}
-                    fill={entry.name === 'Receitas' ? '#047857' : '#b91c1c'}
-                  />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+    <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="font-semibold">Filtros de lancamentos</h2>
+        <button
+          className="rounded-md bg-slate-950 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          type="button"
+          onClick={onSubmit}
+        >
+          Filtrar
+        </button>
       </div>
-
-      <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-4 font-semibold">Despesas por categoria</h2>
-        <div className="h-72">
-          {categoryData.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-sm text-slate-500">
-              Sem despesas no período.
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={categoryData} dataKey="total" nameKey="categoryName" outerRadius={95}>
-                  {categoryData.map((entry, index) => (
-                    <Cell key={entry.categoryId} fill={colors[index % colors.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value) => currency.format(Number(value))} />
-              </PieChart>
-            </ResponsiveContainer>
-          )}
-        </div>
+      <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <Input label="Inicio" type="date" value={filters.startDate} onChange={(value) => onChange({ ...filters, startDate: value })} />
+        <Input label="Fim" type="date" value={filters.endDate} onChange={(value) => onChange({ ...filters, endDate: value })} />
+        <Select label="Tipo" value={filters.type} onChange={(value) => onChange({ ...filters, type: value as TransactionType | '' })}>
+          <option value="">Todos</option>
+          <option value="Income">Receita</option>
+          <option value="Expense">Despesa</option>
+        </Select>
+        <Select label="Status" value={filters.isPaid} onChange={(value) => onChange({ ...filters, isPaid: value as TransactionFilters['isPaid'] })}>
+          <option value="">Todos</option>
+          <option value="true">Pago</option>
+          <option value="false">Pendente</option>
+        </Select>
+        <Select label="Conta" value={filters.accountId} onChange={(value) => onChange({ ...filters, accountId: value })}>
+          <option value="">Todas</option>
+          {accounts.map((account) => (
+            <option key={account.id} value={account.id}>{account.name}</option>
+          ))}
+        </Select>
+        <Select label="Categoria" value={filters.categoryId} onChange={(value) => onChange({ ...filters, categoryId: value })}>
+          <option value="">Todas</option>
+          {categories.map((category) => (
+            <option key={category.id} value={category.id}>{category.name}</option>
+          ))}
+        </Select>
       </div>
     </div>
   )
 }
 
-function TransactionsTable({ transactions }: { transactions: Transaction[] }) {
+function TransactionsTable({
+  accountById,
+  categoryById,
+  onDelete,
+  onEdit,
+  onTogglePaid,
+  transactions,
+}: {
+  accountById: Map<string, Account>
+  categoryById: Map<string, Category>
+  onDelete: (transaction: Transaction) => void
+  onEdit: (transaction: Transaction) => void
+  onTogglePaid: (transaction: Transaction) => void
+  transactions: Transaction[]
+}) {
   return (
     <div className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-200 px-4 py-3">
-        <h2 className="font-semibold">Lançamentos do mês</h2>
+        <h2 className="font-semibold">Lancamentos</h2>
       </div>
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50 text-left text-slate-500">
             <tr>
               <th className="px-4 py-3 font-medium">Data</th>
-              <th className="px-4 py-3 font-medium">Descrição</th>
-              <th className="px-4 py-3 font-medium">Tipo</th>
+              <th className="px-4 py-3 font-medium">Descricao</th>
+              <th className="px-4 py-3 font-medium">Conta</th>
+              <th className="px-4 py-3 font-medium">Categoria</th>
               <th className="px-4 py-3 text-right font-medium">Valor</th>
               <th className="px-4 py-3 font-medium">Status</th>
+              <th className="px-4 py-3 text-right font-medium">Acoes</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {transactions.length === 0 ? (
               <tr>
-                <td className="px-4 py-8 text-center text-slate-500" colSpan={5}>
-                  Nenhum lançamento encontrado.
+                <td className="px-4 py-8 text-center text-slate-500" colSpan={7}>
+                  Nenhum lancamento encontrado.
                 </td>
               </tr>
             ) : (
               transactions.map((transaction) => (
                 <tr key={transaction.id}>
                   <td className="whitespace-nowrap px-4 py-3">{transaction.date}</td>
-                  <td className="min-w-56 px-4 py-3 font-medium text-slate-800">
-                    {transaction.description}
-                  </td>
-                  <td className="px-4 py-3">
-                    {transaction.type === 'Income' ? 'Receita' : 'Despesa'}
-                  </td>
-                  <td
-                    className={`whitespace-nowrap px-4 py-3 text-right font-semibold ${
-                      transaction.type === 'Income' ? 'text-emerald-700' : 'text-red-700'
-                    }`}
-                  >
+                  <td className="min-w-52 px-4 py-3 font-medium text-slate-800">{transaction.description}</td>
+                  <td className="px-4 py-3">{accountById.get(transaction.accountId)?.name ?? '-'}</td>
+                  <td className="px-4 py-3">{categoryById.get(transaction.categoryId)?.name ?? '-'}</td>
+                  <td className={`whitespace-nowrap px-4 py-3 text-right font-semibold ${transaction.type === 'Income' ? 'text-emerald-700' : 'text-red-700'}`}>
                     {currency.format(transaction.amount)}
                   </td>
                   <td className="px-4 py-3">
-                    <span
-                      className={`rounded-full px-2 py-1 text-xs font-medium ${
-                        transaction.isPaid
-                          ? 'bg-emerald-50 text-emerald-700'
-                          : 'bg-amber-50 text-amber-700'
-                      }`}
-                    >
+                    <span className={`rounded-full px-2 py-1 text-xs font-medium ${transaction.isPaid ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
                       {transaction.isPaid ? 'Pago' : 'Pendente'}
                     </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <ActionButtons
+                      onDelete={() => onDelete(transaction)}
+                      onEdit={() => onEdit(transaction)}
+                      onToggle={() => onTogglePaid(transaction)}
+                      toggleTitle={transaction.isPaid ? 'Marcar como pendente' : 'Marcar como pago'}
+                    />
                   </td>
                 </tr>
               ))
@@ -526,6 +628,375 @@ function TransactionsTable({ transactions }: { transactions: Transaction[] }) {
         </table>
       </div>
     </div>
+  )
+}
+
+function ManageLists({
+  accounts,
+  categories,
+  onDeleteAccount,
+  onDeleteCategory,
+  onEditAccount,
+  onEditCategory,
+}: {
+  accounts: Account[]
+  categories: Category[]
+  onDeleteAccount: (account: Account) => void
+  onDeleteCategory: (category: Category) => void
+  onEditAccount: (account: Account) => void
+  onEditCategory: (category: Category) => void
+}) {
+  return (
+    <div className="grid gap-4 xl:grid-cols-2">
+      <SimpleList
+        emptyText="Nenhuma conta cadastrada."
+        items={accounts}
+        title="Contas"
+        renderMeta={(account) => `${account.type} - ${currency.format(account.initialBalance)}`}
+        onDelete={onDeleteAccount}
+        onEdit={onEditAccount}
+      />
+      <SimpleList
+        emptyText="Nenhuma categoria cadastrada."
+        items={categories}
+        title="Categorias"
+        renderMeta={(category) => category.type}
+        onDelete={onDeleteCategory}
+        onEdit={onEditCategory}
+      />
+    </div>
+  )
+}
+
+function SimpleList<T extends { id: string; name: string }>({
+  emptyText,
+  items,
+  onDelete,
+  onEdit,
+  renderMeta,
+  title,
+}: {
+  emptyText: string
+  items: T[]
+  onDelete: (item: T) => void
+  onEdit: (item: T) => void
+  renderMeta: (item: T) => string
+  title: string
+}) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+      <h2 className="mb-3 font-semibold">{title}</h2>
+      {items.length === 0 ? (
+        <p className="text-sm text-slate-500">{emptyText}</p>
+      ) : (
+        <div className="space-y-2">
+          {items.map((item) => (
+            <div key={item.id} className="flex items-center justify-between gap-3 rounded-md border border-slate-100 px-3 py-2">
+              <div>
+                <p className="text-sm font-medium">{item.name}</p>
+                <p className="text-xs text-slate-500">{renderMeta(item)}</p>
+              </div>
+              <ActionButtons
+                compact
+                onDelete={() => onDelete(item)}
+                onEdit={() => onEdit(item)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AccountForm({
+  form,
+  isEditing,
+  isSaving,
+  onCancel,
+  onChange,
+  onSubmit,
+}: {
+  form: CreateAccountRequest
+  isEditing: boolean
+  isSaving: boolean
+  onCancel: () => void
+  onChange: (form: CreateAccountRequest) => void
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void
+}) {
+  return (
+    <FormShell icon={<Wallet size={18} />} isEditing={isEditing} onCancel={onCancel} title={isEditing ? 'Editar conta' : 'Nova conta'}>
+      <form className="space-y-3" onSubmit={onSubmit}>
+        <Input label="Nome" value={form.name} onChange={(value) => onChange({ ...form, name: value })} placeholder="Nubank, carteira..." required />
+        <div className="grid grid-cols-2 gap-3">
+          <Select label="Tipo" value={form.type} onChange={(value) => onChange({ ...form, type: value as AccountType })}>
+            <option value="BankAccount">Banco</option>
+            <option value="CreditCard">Cartao</option>
+            <option value="Cash">Dinheiro</option>
+            <option value="Investment">Investimento</option>
+          </Select>
+          <Input label="Saldo inicial" type="number" step="0.01" value={String(form.initialBalance)} onChange={(value) => onChange({ ...form, initialBalance: Number(value) })} />
+        </div>
+        <SubmitButton isSaving={isSaving} text={isEditing ? 'Salvar conta' : 'Criar conta'} />
+      </form>
+    </FormShell>
+  )
+}
+
+function CategoryForm({
+  form,
+  isEditing,
+  isSaving,
+  onCancel,
+  onChange,
+  onSubmit,
+}: {
+  form: CreateCategoryRequest
+  isEditing: boolean
+  isSaving: boolean
+  onCancel: () => void
+  onChange: (form: CreateCategoryRequest) => void
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void
+}) {
+  return (
+    <FormShell icon={<Plus size={18} />} isEditing={isEditing} onCancel={onCancel} title={isEditing ? 'Editar categoria' : 'Nova categoria'}>
+      <form className="space-y-3" onSubmit={onSubmit}>
+        <Input label="Nome" value={form.name} onChange={(value) => onChange({ ...form, name: value })} placeholder="Mercado, salario..." required />
+        <Select label="Tipo" value={form.type} onChange={(value) => onChange({ ...form, type: value as CategoryType })}>
+          <option value="Expense">Despesa</option>
+          <option value="Income">Receita</option>
+          <option value="Both">Ambos</option>
+        </Select>
+        <SubmitButton isSaving={isSaving} text={isEditing ? 'Salvar categoria' : 'Criar categoria'} />
+      </form>
+    </FormShell>
+  )
+}
+
+function TransactionForm({
+  accounts,
+  categories,
+  form,
+  hasBaseData,
+  isEditing,
+  isSaving,
+  onCancel,
+  onChange,
+  onSubmit,
+}: {
+  accounts: Account[]
+  categories: Category[]
+  form: CreateTransactionRequest
+  hasBaseData: boolean
+  isEditing: boolean
+  isSaving: boolean
+  onCancel: () => void
+  onChange: (form: CreateTransactionRequest) => void
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void
+}) {
+  return (
+    <FormShell icon={<Plus size={18} />} isEditing={isEditing} onCancel={onCancel} title={isEditing ? 'Editar lancamento' : 'Novo lancamento'}>
+      {!hasBaseData && (
+        <div className="mb-4 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+          Cadastre ao menos uma conta e uma categoria antes de lancar transacoes.
+        </div>
+      )}
+      <form className="space-y-3" onSubmit={onSubmit}>
+        <Select label="Tipo" value={form.type} onChange={(value) => onChange({ ...form, type: value as TransactionType, categoryId: '' })}>
+          <option value="Expense">Despesa</option>
+          <option value="Income">Receita</option>
+        </Select>
+        <Input label="Descricao" value={form.description} onChange={(value) => onChange({ ...form, description: value })} placeholder="Mercado, salario..." required />
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Valor" type="number" min="0.01" step="0.01" value={form.amount ? String(form.amount) : ''} onChange={(value) => onChange({ ...form, amount: Number(value) })} required />
+          <Input label="Data" type="date" value={form.date} onChange={(value) => onChange({ ...form, date: value })} required />
+        </div>
+        <Select label="Conta" value={form.accountId} onChange={(value) => onChange({ ...form, accountId: value })} required>
+          <option value="">Selecione</option>
+          {accounts.map((account) => (
+            <option key={account.id} value={account.id}>{account.name}</option>
+          ))}
+        </Select>
+        <Select label="Categoria" value={form.categoryId} onChange={(value) => onChange({ ...form, categoryId: value })} required>
+          <option value="">Selecione</option>
+          {categories.map((category) => (
+            <option key={category.id} value={category.id}>{category.name}</option>
+          ))}
+        </Select>
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Vencimento" type="date" value={form.dueDate ?? ''} onChange={(value) => onChange({ ...form, dueDate: value })} />
+          <label className="flex items-end gap-2 pb-2 text-sm font-medium text-slate-700">
+            <input
+              checked={form.isPaid}
+              className="h-4 w-4 rounded border-slate-300"
+              type="checkbox"
+              onChange={(event) => onChange({ ...form, isPaid: event.target.checked, paymentDate: event.target.checked ? form.date : '' })}
+            />
+            Pago
+          </label>
+        </div>
+        {form.isPaid && (
+          <Input label="Data de pagamento" type="date" value={form.paymentDate ?? ''} onChange={(value) => onChange({ ...form, paymentDate: value })} required />
+        )}
+        <SubmitButton disabled={!hasBaseData} isSaving={isSaving} text={isEditing ? 'Salvar alteracoes' : 'Salvar lancamento'} />
+      </form>
+    </FormShell>
+  )
+}
+
+function FormShell({
+  children,
+  icon,
+  isEditing,
+  onCancel,
+  title,
+}: {
+  children: React.ReactNode
+  icon: React.ReactNode
+  isEditing: boolean
+  onCancel: () => void
+  title: string
+}) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-lg font-semibold">{title}</h2>
+        {isEditing ? (
+          <button className="rounded-md p-1 text-slate-500 hover:bg-slate-100" type="button" onClick={onCancel} title="Cancelar edicao">
+            <X size={18} />
+          </button>
+        ) : (
+          <span className="text-teal-700">{icon}</span>
+        )}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function Input({
+  label,
+  onChange,
+  value,
+  ...props
+}: Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'value'> & {
+  label: string
+  onChange: (value: string) => void
+  value: string
+}) {
+  return (
+    <label className="block text-sm">
+      <span className="mb-1 block font-medium text-slate-700">{label}</span>
+      <input
+        {...props}
+        className="w-full rounded-md border border-slate-300 px-3 py-2"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  )
+}
+
+function Select({
+  children,
+  label,
+  onChange,
+  value,
+  ...props
+}: Omit<React.SelectHTMLAttributes<HTMLSelectElement>, 'onChange' | 'value'> & {
+  label: string
+  onChange: (value: string) => void
+  value: string
+}) {
+  return (
+    <label className="block text-sm">
+      <span className="mb-1 block font-medium text-slate-700">{label}</span>
+      <select
+        {...props}
+        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {children}
+      </select>
+    </label>
+  )
+}
+
+function SubmitButton({
+  disabled,
+  isSaving,
+  text,
+}: {
+  disabled?: boolean
+  isSaving: boolean
+  text: string
+}) {
+  return (
+    <button
+      className="w-full rounded-md bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+      disabled={disabled || isSaving}
+      type="submit"
+    >
+      {isSaving ? 'Salvando...' : text}
+    </button>
+  )
+}
+
+function ActionButtons({
+  compact,
+  onDelete,
+  onEdit,
+  onToggle,
+  toggleTitle,
+}: {
+  compact?: boolean
+  onDelete: () => void
+  onEdit: () => void
+  onToggle?: () => void
+  toggleTitle?: string
+}) {
+  return (
+    <div className="flex justify-end gap-1">
+      {onToggle && (
+        <IconButton title={toggleTitle ?? 'Alternar status'} onClick={onToggle}>
+          <CheckCircle2 size={compact ? 15 : 16} />
+        </IconButton>
+      )}
+      <IconButton title="Editar" onClick={onEdit}>
+        <Pencil size={compact ? 15 : 16} />
+      </IconButton>
+      <IconButton danger title="Excluir" onClick={onDelete}>
+        <Trash2 size={compact ? 15 : 16} />
+      </IconButton>
+    </div>
+  )
+}
+
+function IconButton({
+  children,
+  danger,
+  onClick,
+  title,
+}: {
+  children: React.ReactNode
+  danger?: boolean
+  onClick: () => void
+  title: string
+}) {
+  return (
+    <button
+      className={`rounded-md p-1.5 text-slate-500 ${
+        danger
+          ? 'hover:bg-red-50 hover:text-red-700'
+          : 'hover:bg-slate-100 hover:text-slate-900'
+      }`}
+      type="button"
+      onClick={onClick}
+      title={title}
+    >
+      {children}
+    </button>
   )
 }
 
