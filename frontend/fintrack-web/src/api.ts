@@ -1,6 +1,9 @@
 export type AccountType = 'BankAccount' | 'CreditCard' | 'Cash' | 'Investment'
 export type CategoryType = 'Income' | 'Expense' | 'Both'
 export type TransactionType = 'Income' | 'Expense'
+export type RecurringFrequency = 'Monthly' | 'Weekly' | 'Yearly'
+export type FileImportStatus = 'Pending' | 'Processing' | 'Completed' | 'Failed'
+export type FileImportType = 'Csv' | 'Excel' | 'Pdf'
 
 export type Account = {
   id: string
@@ -82,6 +85,95 @@ export type CreateCategoryRequest = {
 }
 
 export type UpdateCategoryRequest = CreateCategoryRequest
+
+export type CreateInstallmentPurchaseRequest = {
+  accountId: string
+  categoryId: string
+  description: string
+  totalAmount: number
+  totalInstallments: number
+  startDate: string
+  dueDay: number | null
+}
+
+export type InstallmentGroup = {
+  id: string
+  description: string
+  totalAmount: number
+  installmentAmount: number
+  totalInstallments: number
+  startDate: string
+  createdAt: string
+}
+
+export type CreateRecurringRuleRequest = {
+  accountId: string
+  categoryId: string
+  description: string
+  amount: number
+  frequency: RecurringFrequency
+  dayOfMonth: number
+  startDate: string
+  endDate: string | null
+}
+
+export type RecurringRule = {
+  id: string
+  accountId: string
+  categoryId: string
+  description: string
+  amount: number
+  frequency: RecurringFrequency
+  dayOfMonth: number
+  startDate: string
+  endDate: string | null
+  isActive: boolean
+}
+
+export type GenerateRecurringTransactionsResult = {
+  createdTransactions: number
+}
+
+export type ForecastMonth = {
+  year: number
+  month: number
+  income: number
+  expense: number
+  balance: number
+  projectedRecurringExpenses: number
+}
+
+export type CsvImportRowPreview = {
+  rowNumber: number
+  description: string
+  amount: number | null
+  type: TransactionType | null
+  date: string | null
+  accountId: string | null
+  categoryId: string | null
+  dueDate: string | null
+  isPaid: boolean | null
+  paymentDate: string | null
+  errors: string[]
+}
+
+export type CsvImportPreview = {
+  totalRows: number
+  validRows: number
+  invalidRows: number
+  rows: CsvImportRowPreview[]
+}
+
+export type ImportBatch = {
+  id: string
+  fileName: string
+  fileType: FileImportType
+  importedAt: string
+  totalRows: number
+  successRows: number
+  failedRows: number
+  status: FileImportStatus
+}
 
 type TransactionFilters = {
   startDate?: string
@@ -181,4 +273,33 @@ export const api = {
     request<void>(`/api/transactions/${id}`, {
       method: 'DELETE',
     }),
+  createInstallmentPurchase: (purchase: CreateInstallmentPurchaseRequest) =>
+    request<InstallmentGroup>('/api/installments', {
+      method: 'POST',
+      body: JSON.stringify(purchase),
+    }),
+  getRecurringRules: () => request<RecurringRule[]>('/api/recurring-rules'),
+  createRecurringRule: (rule: CreateRecurringRuleRequest) =>
+    request<RecurringRule>('/api/recurring-rules', {
+      method: 'POST',
+      body: JSON.stringify(rule),
+    }),
+  generateRecurringTransactions: (throughDate: string) =>
+    request<GenerateRecurringTransactionsResult>('/api/recurring-rules/generate', {
+      method: 'POST',
+      body: JSON.stringify({ throughDate }),
+    }),
+  getForecast: (year: number, month: number, months = 6) =>
+    request<ForecastMonth[]>(`/api/forecast${toQueryString({ year, month, months })}`),
+  previewCsvImport: (fileName: string, content: string) =>
+    request<CsvImportPreview>('/api/imports/csv/preview', {
+      method: 'POST',
+      body: JSON.stringify({ fileName, content }),
+    }),
+  commitCsvImport: (fileName: string, content: string) =>
+    request<ImportBatch>('/api/imports/csv/commit', {
+      method: 'POST',
+      body: JSON.stringify({ fileName, content }),
+    }),
+  getImportHistory: () => request<ImportBatch[]>('/api/imports'),
 }
