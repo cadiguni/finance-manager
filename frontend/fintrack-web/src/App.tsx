@@ -18,8 +18,10 @@ import type {
   Account,
   AccountType,
   Category,
+  CategoryKeywordRule,
   CategoryType,
   CreateAccountRequest,
+  CreateCategoryKeywordRuleRequest,
   CreateCategoryRequest,
   CreateInstallmentPurchaseRequest,
   CreateRecurringRuleRequest,
@@ -42,6 +44,8 @@ type TransactionFilters = {
   type: TransactionType | ''
   isPaid: '' | 'true' | 'false'
 }
+
+type ImportMode = 'csv' | 'excel'
 
 const currency = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -77,6 +81,14 @@ const emptyCategoryForm: CreateCategoryRequest = {
   name: '',
   type: 'Expense',
   parentCategoryId: null,
+}
+
+const emptyKeywordRuleForm: CreateCategoryKeywordRuleRequest = {
+  categoryId: '',
+  keyword: '',
+  transactionType: null,
+  priority: 0,
+  isActive: true,
 }
 
 const emptyInstallmentForm: CreateInstallmentPurchaseRequest = {
@@ -117,10 +129,13 @@ function App() {
   const [recurringRules, setRecurringRules] = useState<RecurringRule[]>([])
   const [forecast, setForecast] = useState<ForecastMonth[]>([])
   const [importHistory, setImportHistory] = useState<ImportBatch[]>([])
+  const [keywordRules, setKeywordRules] = useState<CategoryKeywordRule[]>([])
   const [transactionForm, setTransactionForm] =
     useState<CreateTransactionRequest>(emptyTransactionForm)
   const [accountForm, setAccountForm] = useState<CreateAccountRequest>(emptyAccountForm)
   const [categoryForm, setCategoryForm] = useState<CreateCategoryRequest>(emptyCategoryForm)
+  const [keywordRuleForm, setKeywordRuleForm] =
+    useState<CreateCategoryKeywordRuleRequest>(emptyKeywordRuleForm)
   const [installmentForm, setInstallmentForm] =
     useState<CreateInstallmentPurchaseRequest>(emptyInstallmentForm)
   const [recurringForm, setRecurringForm] =
@@ -128,6 +143,10 @@ function App() {
   const [csvFileName, setCsvFileName] = useState('import.csv')
   const [csvContent, setCsvContent] = useState('')
   const [csvPreview, setCsvPreview] = useState<CsvImportPreview | null>(null)
+  const [importMode, setImportMode] = useState<ImportMode>('csv')
+  const [excelFileName, setExcelFileName] = useState('import.xlsx')
+  const [excelContentBase64, setExcelContentBase64] = useState('')
+  const [excelWorksheetName, setExcelWorksheetName] = useState('')
   const [filters, setFilters] = useState<TransactionFilters>(initialFilters)
   const [year, setYear] = useState(currentYear)
   const [month, setMonth] = useState(currentMonth)
@@ -138,6 +157,7 @@ function App() {
   const [isSavingTransaction, setIsSavingTransaction] = useState(false)
   const [isSavingAccount, setIsSavingAccount] = useState(false)
   const [isSavingCategory, setIsSavingCategory] = useState(false)
+  const [isSavingKeywordRule, setIsSavingKeywordRule] = useState(false)
   const [isSavingInstallment, setIsSavingInstallment] = useState(false)
   const [isSavingRecurring, setIsSavingRecurring] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
@@ -178,6 +198,7 @@ function App() {
         recurringRulesData,
         forecastData,
         importHistoryData,
+        keywordRulesData,
       ] =
         await Promise.all([
           api.getMonthlySummary(year, month),
@@ -194,6 +215,7 @@ function App() {
           api.getRecurringRules(),
           api.getForecast(year, month, 6),
           api.getImportHistory(),
+          api.getCategoryKeywordRules(),
         ])
 
       setSummary(summaryData)
@@ -203,6 +225,7 @@ function App() {
       setRecurringRules(recurringRulesData)
       setForecast(forecastData)
       setImportHistory(importHistoryData)
+      setKeywordRules(keywordRulesData)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar dados.')
     } finally {
@@ -310,6 +333,27 @@ function App() {
     }
   }
 
+  async function handleSaveKeywordRule(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setIsSavingKeywordRule(true)
+    setError(null)
+
+    try {
+      await api.createCategoryKeywordRule({
+        ...keywordRuleForm,
+        keyword: keywordRuleForm.keyword.trim(),
+        priority: Number(keywordRuleForm.priority),
+        transactionType: keywordRuleForm.transactionType || null,
+      })
+      setKeywordRuleForm(emptyKeywordRuleForm)
+      await loadData()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao salvar regra.')
+    } finally {
+      setIsSavingKeywordRule(false)
+    }
+  }
+
   async function handleSaveInstallment(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setIsSavingInstallment(true)
@@ -401,6 +445,56 @@ function App() {
     }
   }
 
+  async function previewExcelImport() {
+    setIsImporting(true)
+    setError(null)
+
+    try {
+      const preview = await api.previewExcelImport(
+        excelFileName,
+        excelContentBase64,
+        excelWorksheetName.trim() || null,
+      )
+      setCsvPreview(preview)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao validar Excel.')
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
+  async function commitExcelImport() {
+    setIsImporting(true)
+    setError(null)
+
+    try {
+      await api.commitExcelImport(
+        excelFileName,
+        excelContentBase64,
+        excelWorksheetName.trim() || null,
+      )
+      setExcelContentBase64('')
+      setCsvPreview(null)
+      await loadData()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao importar Excel.')
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
+  async function selectExcelFile(file: File | null) {
+    setCsvPreview(null)
+    setExcelContentBase64('')
+
+    if (!file) {
+      return
+    }
+
+    setExcelFileName(file.name)
+    setExcelContentBase64(await readFileAsBase64(file))
+  }
+
   function editTransaction(transaction: Transaction) {
     setEditingTransactionId(transaction.id)
     setTransactionForm({
@@ -456,6 +550,14 @@ function App() {
     }
 
     await runAction(() => api.deleteCategory(category.id), 'Erro ao excluir categoria.')
+  }
+
+  async function deleteKeywordRule(rule: CategoryKeywordRule) {
+    if (!window.confirm(`Excluir a regra "${rule.keyword}"?`)) {
+      return
+    }
+
+    await runAction(() => api.deleteCategoryKeywordRule(rule.id), 'Erro ao excluir regra.')
   }
 
   async function togglePaid(transaction: Transaction) {
@@ -584,15 +686,34 @@ function App() {
               <ImportPanel
                 accounts={accounts}
                 categories={categories}
+                excelFileName={excelFileName}
+                excelReady={Boolean(excelContentBase64)}
+                excelWorksheetName={excelWorksheetName}
                 fileName={csvFileName}
                 history={importHistory}
+                importMode={importMode}
                 isImporting={isImporting}
-                onCommit={() => void commitCsvImport()}
+                onCommit={() => void (importMode === 'csv' ? commitCsvImport() : commitExcelImport())}
                 onContentChange={setCsvContent}
+                onExcelFileChange={(file) => void selectExcelFile(file)}
+                onExcelWorksheetNameChange={setExcelWorksheetName}
                 onFileNameChange={setCsvFileName}
-                onPreview={() => void previewCsvImport()}
+                onModeChange={(mode) => {
+                  setImportMode(mode)
+                  setCsvPreview(null)
+                }}
+                onPreview={() => void (importMode === 'csv' ? previewCsvImport() : previewExcelImport())}
                 preview={csvPreview}
                 value={csvContent}
+              />
+              <CategorizationPanel
+                categories={categories}
+                form={keywordRuleForm}
+                isSaving={isSavingKeywordRule}
+                onChange={setKeywordRuleForm}
+                onDelete={deleteKeywordRule}
+                onSubmit={handleSaveKeywordRule}
+                rules={keywordRules}
               />
             </>
           )}
@@ -663,6 +784,18 @@ function App() {
       </div>
     </main>
   )
+}
+
+function readFileAsBase64(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = String(reader.result ?? '')
+      resolve(result.includes(',') ? result.split(',')[1] : result)
+    }
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
 }
 
 function SummaryCards({ summary }: { summary: MonthlySummary | null }) {
@@ -883,27 +1016,158 @@ function ManageLists({
   )
 }
 
+function CategorizationPanel({
+  categories,
+  form,
+  isSaving,
+  onChange,
+  onDelete,
+  onSubmit,
+  rules,
+}: {
+  categories: Category[]
+  form: CreateCategoryKeywordRuleRequest
+  isSaving: boolean
+  onChange: (form: CreateCategoryKeywordRuleRequest) => void
+  onDelete: (rule: CategoryKeywordRule) => void
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void
+  rules: CategoryKeywordRule[]
+}) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-4 flex items-center gap-2">
+        <FileText className="text-teal-700" size={18} />
+        <h2 className="font-semibold">Categorizacao por palavras-chave</h2>
+      </div>
+      <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
+        <form className="space-y-3" onSubmit={onSubmit}>
+          <Input
+            label="Palavra-chave"
+            placeholder="mercado, uber, ifood..."
+            value={form.keyword}
+            onChange={(value) => onChange({ ...form, keyword: value })}
+            required
+          />
+          <Select
+            label="Categoria"
+            value={form.categoryId}
+            onChange={(value) => onChange({ ...form, categoryId: value })}
+            required
+          >
+            <option value="">Selecione</option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </Select>
+          <div className="grid grid-cols-2 gap-3">
+            <Select
+              label="Tipo"
+              value={form.transactionType ?? ''}
+              onChange={(value) =>
+                onChange({ ...form, transactionType: value ? (value as TransactionType) : null })
+              }
+            >
+              <option value="">Ambos</option>
+              <option value="Expense">Despesa</option>
+              <option value="Income">Receita</option>
+            </Select>
+            <Input
+              label="Prioridade"
+              type="number"
+              min="0"
+              value={String(form.priority)}
+              onChange={(value) => onChange({ ...form, priority: Number(value) })}
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <input
+              checked={form.isActive}
+              className="h-4 w-4 rounded border-slate-300"
+              type="checkbox"
+              onChange={(event) => onChange({ ...form, isActive: event.target.checked })}
+            />
+            Ativa
+          </label>
+          <SubmitButton
+            disabled={categories.length === 0}
+            isSaving={isSaving}
+            text="Salvar regra"
+          />
+        </form>
+        <div className="overflow-hidden rounded-md border border-slate-200">
+          {rules.length === 0 ? (
+            <p className="p-3 text-sm text-slate-500">Nenhuma regra cadastrada.</p>
+          ) : (
+            <table className="min-w-full divide-y divide-slate-100 text-sm">
+              <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="px-3 py-2">Palavra</th>
+                  <th className="px-3 py-2">Categoria</th>
+                  <th className="px-3 py-2">Tipo</th>
+                  <th className="px-3 py-2">Prior.</th>
+                  <th className="px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {rules.map((rule) => (
+                  <tr key={rule.id}>
+                    <td className="px-3 py-2 font-medium">{rule.keyword}</td>
+                    <td className="px-3 py-2">{rule.categoryName || rule.categoryId}</td>
+                    <td className="px-3 py-2">{rule.transactionType ?? 'Ambos'}</td>
+                    <td className="px-3 py-2">{rule.priority}</td>
+                    <td className="px-3 py-2 text-right">
+                      <IconButton danger title="Excluir regra" onClick={() => onDelete(rule)}>
+                        <Trash2 size={16} />
+                      </IconButton>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ImportPanel({
   accounts,
   categories,
+  excelFileName,
+  excelReady,
+  excelWorksheetName,
   fileName,
   history,
+  importMode,
   isImporting,
   onCommit,
   onContentChange,
+  onExcelFileChange,
+  onExcelWorksheetNameChange,
   onFileNameChange,
+  onModeChange,
   onPreview,
   preview,
   value,
 }: {
   accounts: Account[]
   categories: Category[]
+  excelFileName: string
+  excelReady: boolean
+  excelWorksheetName: string
   fileName: string
   history: ImportBatch[]
+  importMode: ImportMode
   isImporting: boolean
   onCommit: () => void
   onContentChange: (value: string) => void
+  onExcelFileChange: (file: File | null) => void
+  onExcelWorksheetNameChange: (value: string) => void
   onFileNameChange: (value: string) => void
+  onModeChange: (mode: ImportMode) => void
   onPreview: () => void
   preview: CsvImportPreview | null
   value: string
@@ -911,26 +1175,66 @@ function ImportPanel({
   const accountById = new Map(accounts.map((account) => [account.id, account.name]))
   const categoryById = new Map(categories.map((category) => [category.id, category.name]))
   const canCommit = Boolean(preview && preview.validRows > 0)
+  const canPreview = importMode === 'csv' ? Boolean(value.trim()) : excelReady
 
   return (
     <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-4 flex items-center gap-2">
         <FileText className="text-teal-700" size={18} />
-        <h2 className="font-semibold">Importacao CSV</h2>
+        <h2 className="font-semibold">Importacao</h2>
       </div>
       <div className="grid gap-4 xl:grid-cols-[1fr_320px]">
         <div className="space-y-3">
-          <Input label="Nome do arquivo" value={fileName} onChange={onFileNameChange} />
-          <TextArea
-            label="CSV"
-            onChange={onContentChange}
-            placeholder="description,amount,type,date,accountId,categoryId,dueDate,isPaid,paymentDate"
-            value={value}
-          />
+          <div className="inline-flex rounded-md border border-slate-300 bg-white p-1 text-sm">
+            <button
+              className={`rounded px-3 py-1.5 font-medium ${importMode === 'csv' ? 'bg-slate-950 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+              type="button"
+              onClick={() => onModeChange('csv')}
+            >
+              CSV
+            </button>
+            <button
+              className={`rounded px-3 py-1.5 font-medium ${importMode === 'excel' ? 'bg-slate-950 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+              type="button"
+              onClick={() => onModeChange('excel')}
+            >
+              Excel
+            </button>
+          </div>
+          {importMode === 'csv' ? (
+            <>
+              <Input label="Nome do arquivo" value={fileName} onChange={onFileNameChange} />
+              <TextArea
+                label="CSV"
+                onChange={onContentChange}
+                placeholder="description,amount,type,date,accountId,categoryId,dueDate,isPaid,paymentDate"
+                value={value}
+              />
+            </>
+          ) : (
+            <>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-700">Arquivo Excel</span>
+                <input
+                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="w-full rounded-md border border-slate-300 px-3 py-2"
+                  type="file"
+                  onChange={(event) => onExcelFileChange(event.target.files?.[0] ?? null)}
+                />
+              </label>
+              <Input label="Nome do arquivo" value={excelFileName} onChange={() => undefined} readOnly />
+              <Input
+                label="Aba"
+                placeholder="Opcional"
+                value={excelWorksheetName}
+                onChange={onExcelWorksheetNameChange}
+              />
+            </>
+          )}
           <div className="flex flex-wrap gap-2">
             <button
               className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-100"
-              disabled={isImporting || !value.trim()}
+              disabled={isImporting || !canPreview}
               type="button"
               onClick={onPreview}
             >

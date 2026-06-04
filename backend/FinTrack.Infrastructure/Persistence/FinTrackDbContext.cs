@@ -17,6 +17,7 @@ public class FinTrackDbContext : DbContext
     public DbSet<InstallmentGroup> InstallmentGroups => Set<InstallmentGroup>();
     public DbSet<RecurringRule> RecurringRules => Set<RecurringRule>();
     public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();
+    public DbSet<CategoryKeywordRule> CategoryKeywordRules => Set<CategoryKeywordRule>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

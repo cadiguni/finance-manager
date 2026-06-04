@@ -1,3 +1,4 @@
+using FinTrack.Application.Categorization;
 using FinTrack.Application.Categories;
 using FinTrack.Application.Accounts;
 using FinTrack.Application.Dashboard;
@@ -15,6 +16,7 @@ public static class DependencyInjection
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
         services.AddScoped<IAccountService, AccountService>();
+        services.AddScoped<ICategoryKeywordRuleService, CategoryKeywordRuleService>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IForecastService, ForecastService>();

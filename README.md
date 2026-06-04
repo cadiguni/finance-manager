@@ -15,6 +15,8 @@ The project is starting with the backend MVP:
 - Monthly dashboard summary
 - React frontend with Vite, TypeScript, Tailwind CSS and Recharts
 - Frontend forms for accounts, categories and transactions
+- CSV and Excel imports with preview, validation and import history
+- Automatic categorization by keyword rules during imports
 
 ## Project Structure
 
@@ -133,6 +135,7 @@ Current unit coverage focuses on:
 
 - `AccountService`
 - `TransactionService`
+- Excel import parsing and commit flow
 
 ## CI
 
@@ -236,6 +239,36 @@ The monthly summary returns:
 - `upcomingPayments`
 - `paidExpenses`
 - `unpaidExpenses`
+
+## Import Endpoints
+
+- `POST /api/imports/csv/preview`
+- `POST /api/imports/csv/commit`
+- `POST /api/imports/excel/preview`
+- `POST /api/imports/excel/commit`
+- `GET /api/imports`
+- `GET /api/category-keyword-rules`
+- `POST /api/category-keyword-rules`
+- `PUT /api/category-keyword-rules/{id}`
+- `DELETE /api/category-keyword-rules/{id}`
+
+CSV requests send `fileName` and `content`. Excel requests send `fileName`, `contentBase64` and optional `worksheetName`.
+
+Both formats use the same columns:
+
+- `description`
+- `amount`
+- `type`
+- `date`
+- `accountId`
+- `categoryId`
+- `dueDate`
+- `isPaid`
+- `paymentDate`
+
+Required columns are `description`, `amount`, `type`, `date` and `accountId`. Dates must use `yyyy-MM-dd`.
+
+`categoryId` can be left empty when a matching active keyword rule exists for the transaction description and type. Higher-priority rules are evaluated first.
 
 ## Notes
 

@@ -1,4 +1,5 @@
 using FinTrack.Application.Accounts;
+using FinTrack.Application.Categorization;
 using FinTrack.Application.Categories;
 using FinTrack.Application.Dashboard;
 using FinTrack.Application.Imports;
@@ -6,6 +7,7 @@ using FinTrack.Application.Installments;
 using FinTrack.Application.Recurring;
 using FinTrack.Application.Transactions;
 using FinTrack.Infrastructure.Accounts;
+using FinTrack.Infrastructure.Categorization;
 using FinTrack.Infrastructure.Categories;
 using FinTrack.Infrastructure.Dashboard;
 using FinTrack.Infrastructure.Imports;
@@ -29,6 +31,7 @@ public static class DependencyInjection
             options.UseNpgsql(configuration.GetConnectionString("DefaultConnection")));
 
         services.AddScoped<IAccountRepository, AccountRepository>();
+        services.AddScoped<ICategoryKeywordRuleRepository, CategoryKeywordRuleRepository>();
         services.AddScoped<ICategoryRepository, CategoryRepository>();
         services.AddScoped<IDashboardRepository, DashboardRepository>();
         services.AddScoped<IImportBatchRepository, ImportBatchRepository>();

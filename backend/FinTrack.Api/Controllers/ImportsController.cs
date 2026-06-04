@@ -1,3 +1,4 @@
+using FinTrack.Application.Common;
 using FinTrack.Application.Imports;
 using Microsoft.AspNetCore.Mvc;
 
@@ -31,6 +32,53 @@ public sealed class ImportsController : ControllerBase
         CancellationToken cancellationToken)
     {
         var result = await _importService.CommitCsvAsync(DemoUserId, request, cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return BadRequest(new { message = result.Error });
+        }
+
+        return Ok(result.Value);
+    }
+
+    [HttpPost("excel/preview")]
+    public async Task<ActionResult<CsvImportPreviewDto>> PreviewExcel(
+        ExcelPreviewRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var preview = await _importService.PreviewExcelAsync(DemoUserId, request, cancellationToken);
+            return Ok(preview);
+        }
+        catch (FormatException)
+        {
+            return BadRequest(new { message = "Excel content must be a valid base64 string." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("excel/commit")]
+    public async Task<ActionResult<ImportBatchDto>> CommitExcel(
+        CommitExcelImportRequest request,
+        CancellationToken cancellationToken)
+    {
+        Result<ImportBatchDto> result;
+        try
+        {
+            result = await _importService.CommitExcelAsync(DemoUserId, request, cancellationToken);
+        }
+        catch (FormatException)
+        {
+            return BadRequest(new { message = "Excel content must be a valid base64 string." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+
         if (!result.IsSuccess)
         {
             return BadRequest(new { message = result.Error });

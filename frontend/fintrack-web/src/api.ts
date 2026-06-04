@@ -175,6 +175,27 @@ export type ImportBatch = {
   status: FileImportStatus
 }
 
+export type CategoryKeywordRule = {
+  id: string
+  categoryId: string
+  categoryName: string
+  keyword: string
+  transactionType: TransactionType | null
+  priority: number
+  isActive: boolean
+  createdAt: string
+}
+
+export type CreateCategoryKeywordRuleRequest = {
+  categoryId: string
+  keyword: string
+  transactionType: TransactionType | null
+  priority: number
+  isActive: boolean
+}
+
+export type UpdateCategoryKeywordRuleRequest = CreateCategoryKeywordRuleRequest
+
 type TransactionFilters = {
   startDate?: string
   endDate?: string
@@ -301,5 +322,31 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ fileName, content }),
     }),
+  previewExcelImport: (fileName: string, contentBase64: string, worksheetName: string | null) =>
+    request<CsvImportPreview>('/api/imports/excel/preview', {
+      method: 'POST',
+      body: JSON.stringify({ fileName, contentBase64, worksheetName }),
+    }),
+  commitExcelImport: (fileName: string, contentBase64: string, worksheetName: string | null) =>
+    request<ImportBatch>('/api/imports/excel/commit', {
+      method: 'POST',
+      body: JSON.stringify({ fileName, contentBase64, worksheetName }),
+    }),
   getImportHistory: () => request<ImportBatch[]>('/api/imports'),
+  getCategoryKeywordRules: () =>
+    request<CategoryKeywordRule[]>('/api/category-keyword-rules'),
+  createCategoryKeywordRule: (rule: CreateCategoryKeywordRuleRequest) =>
+    request<CategoryKeywordRule>('/api/category-keyword-rules', {
+      method: 'POST',
+      body: JSON.stringify(rule),
+    }),
+  updateCategoryKeywordRule: (id: string, rule: UpdateCategoryKeywordRuleRequest) =>
+    request<void>(`/api/category-keyword-rules/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(rule),
+    }),
+  deleteCategoryKeywordRule: (id: string) =>
+    request<void>(`/api/category-keyword-rules/${id}`, {
+      method: 'DELETE',
+    }),
 }
