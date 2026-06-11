@@ -1,7 +1,8 @@
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 COPY FinTrack.sln ./
+COPY Directory.Build.props ./
 COPY backend/FinTrack.Api/FinTrack.Api.csproj backend/FinTrack.Api/
 COPY backend/FinTrack.Application/FinTrack.Application.csproj backend/FinTrack.Application/
 COPY backend/FinTrack.Domain/FinTrack.Domain.csproj backend/FinTrack.Domain/
@@ -15,8 +16,12 @@ RUN dotnet publish backend/FinTrack.Api/FinTrack.Api.csproj \
     --configuration Release \
     --output /app/publish
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/publish .
 

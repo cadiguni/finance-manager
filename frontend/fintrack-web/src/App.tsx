@@ -142,6 +142,8 @@ function App() {
     useState<CreateRecurringRuleRequest>(emptyRecurringForm)
   const [csvFileName, setCsvFileName] = useState('import.csv')
   const [csvContent, setCsvContent] = useState('')
+  const [csvDefaultAccountId, setCsvDefaultAccountId] = useState('')
+  const [csvDefaultCategoryId, setCsvDefaultCategoryId] = useState('')
   const [csvPreview, setCsvPreview] = useState<CsvImportPreview | null>(null)
   const [importMode, setImportMode] = useState<ImportMode>('csv')
   const [excelFileName, setExcelFileName] = useState('import.xlsx')
@@ -149,6 +151,7 @@ function App() {
   const [excelWorksheetName, setExcelWorksheetName] = useState('')
   const [cardStatementFileName, setCardStatementFileName] = useState('fatura-cartao.txt')
   const [cardStatementContent, setCardStatementContent] = useState('')
+  const [cardStatementContentBase64, setCardStatementContentBase64] = useState<string | null>(null)
   const [cardStatementAccountId, setCardStatementAccountId] = useState('')
   const [cardStatementDueDate, setCardStatementDueDate] = useState(todayText)
   const [cardStatementIsPaid, setCardStatementIsPaid] = useState(false)
@@ -426,7 +429,12 @@ function App() {
     setError(null)
 
     try {
-      const preview = await api.previewCsvImport(csvFileName, csvContent)
+      const preview = await api.previewCsvImport(
+        csvFileName,
+        csvContent,
+        csvDefaultAccountId || null,
+        csvDefaultCategoryId || null,
+      )
       setCsvPreview(preview)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao validar CSV.')
@@ -440,7 +448,12 @@ function App() {
     setError(null)
 
     try {
-      await api.commitCsvImport(csvFileName, csvContent)
+      await api.commitCsvImport(
+        csvFileName,
+        csvContent,
+        csvDefaultAccountId || null,
+        csvDefaultCategoryId || null,
+      )
       setCsvContent('')
       setCsvPreview(null)
       await loadData()
@@ -493,6 +506,7 @@ function App() {
     return {
       fileName: cardStatementFileName,
       content: cardStatementContent,
+      contentBase64: cardStatementContentBase64,
       accountId: cardStatementAccountId,
       dueDate: cardStatementDueDate,
       isPaid: cardStatementIsPaid,
@@ -521,6 +535,7 @@ function App() {
     try {
       await api.commitCardStatementImport(buildCardStatementPayload())
       setCardStatementContent('')
+      setCardStatementContentBase64(null)
       setCsvPreview(null)
       await loadData()
     } catch (err) {
@@ -540,6 +555,24 @@ function App() {
 
     setExcelFileName(file.name)
     setExcelContentBase64(await readFileAsBase64(file))
+  }
+
+  async function selectCardStatementFile(file: File | null) {
+    setCsvPreview(null)
+    setCardStatementContent('')
+    setCardStatementContentBase64(null)
+
+    if (!file) {
+      return
+    }
+
+    setCardStatementFileName(file.name)
+    if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+      setCardStatementContentBase64(await readFileAsBase64(file))
+      return
+    }
+
+    setCardStatementContent(await readFileAsText(file))
   }
 
   function editTransaction(transaction: Transaction) {
@@ -734,11 +767,14 @@ function App() {
                 accounts={accounts}
                 cardStatementAccountId={cardStatementAccountId}
                 cardStatementContent={cardStatementContent}
+                cardStatementContentBase64={cardStatementContentBase64}
                 cardStatementDueDate={cardStatementDueDate}
                 cardStatementFileName={cardStatementFileName}
                 cardStatementIsPaid={cardStatementIsPaid}
                 cardStatementPaymentDate={cardStatementPaymentDate}
                 categories={categories}
+                csvDefaultAccountId={csvDefaultAccountId}
+                csvDefaultCategoryId={csvDefaultCategoryId}
                 excelFileName={excelFileName}
                 excelReady={Boolean(excelContentBase64)}
                 excelWorksheetName={excelWorksheetName}
@@ -752,6 +788,7 @@ function App() {
                 onCardStatementFileNameChange={setCardStatementFileName}
                 onCardStatementIsPaidChange={setCardStatementIsPaid}
                 onCardStatementPaymentDateChange={setCardStatementPaymentDate}
+                onCardStatementTextFileChange={(file) => void selectCardStatementFile(file)}
                 onCommit={() => {
                   if (importMode === 'csv') {
                     void commitCsvImport()
@@ -762,6 +799,8 @@ function App() {
                   }
                 }}
                 onContentChange={setCsvContent}
+                onCsvDefaultAccountIdChange={setCsvDefaultAccountId}
+                onCsvDefaultCategoryIdChange={setCsvDefaultCategoryId}
                 onExcelFileChange={(file) => void selectExcelFile(file)}
                 onExcelWorksheetNameChange={setExcelWorksheetName}
                 onFileNameChange={setCsvFileName}
@@ -870,6 +909,15 @@ function readFileAsBase64(file: File) {
     }
     reader.onerror = () => reject(reader.error)
     reader.readAsDataURL(file)
+  })
+}
+
+function readFileAsText(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result ?? ''))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsText(file)
   })
 }
 
@@ -1212,11 +1260,14 @@ function ImportPanel({
   accounts,
   cardStatementAccountId,
   cardStatementContent,
+  cardStatementContentBase64,
   cardStatementDueDate,
   cardStatementFileName,
   cardStatementIsPaid,
   cardStatementPaymentDate,
   categories,
+  csvDefaultAccountId,
+  csvDefaultCategoryId,
   excelFileName,
   excelReady,
   excelWorksheetName,
@@ -1230,8 +1281,11 @@ function ImportPanel({
   onCardStatementFileNameChange,
   onCardStatementIsPaidChange,
   onCardStatementPaymentDateChange,
+  onCardStatementTextFileChange,
   onCommit,
   onContentChange,
+  onCsvDefaultAccountIdChange,
+  onCsvDefaultCategoryIdChange,
   onExcelFileChange,
   onExcelWorksheetNameChange,
   onFileNameChange,
@@ -1243,11 +1297,14 @@ function ImportPanel({
   accounts: Account[]
   cardStatementAccountId: string
   cardStatementContent: string
+  cardStatementContentBase64: string | null
   cardStatementDueDate: string
   cardStatementFileName: string
   cardStatementIsPaid: boolean
   cardStatementPaymentDate: string
   categories: Category[]
+  csvDefaultAccountId: string
+  csvDefaultCategoryId: string
   excelFileName: string
   excelReady: boolean
   excelWorksheetName: string
@@ -1261,8 +1318,11 @@ function ImportPanel({
   onCardStatementFileNameChange: (value: string) => void
   onCardStatementIsPaidChange: (value: boolean) => void
   onCardStatementPaymentDateChange: (value: string) => void
+  onCardStatementTextFileChange: (file: File | null) => void
   onCommit: () => void
   onContentChange: (value: string) => void
+  onCsvDefaultAccountIdChange: (value: string) => void
+  onCsvDefaultCategoryIdChange: (value: string) => void
   onExcelFileChange: (file: File | null) => void
   onExcelWorksheetNameChange: (value: string) => void
   onFileNameChange: (value: string) => void
@@ -1274,13 +1334,14 @@ function ImportPanel({
   const accountById = new Map(accounts.map((account) => [account.id, account.name]))
   const categoryById = new Map(categories.map((category) => [category.id, category.name]))
   const creditCardAccounts = accounts.filter((account) => account.type === 'CreditCard')
+  const expenseCategories = categories.filter((category) => category.type === 'Expense' || category.type === 'Both')
   const canCommit = Boolean(preview && preview.validRows > 0)
   const canPreview =
     importMode === 'csv'
-      ? Boolean(value.trim())
-      : importMode === 'excel'
-        ? excelReady
-        : Boolean(cardStatementContent.trim() && cardStatementAccountId && cardStatementDueDate)
+      ? Boolean(value.trim() && csvDefaultAccountId)
+        : importMode === 'excel'
+          ? excelReady
+          : Boolean((cardStatementContent.trim() || cardStatementContentBase64) && cardStatementAccountId && cardStatementDueDate)
 
   return (
     <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
@@ -1310,16 +1371,30 @@ function ImportPanel({
               type="button"
               onClick={() => onModeChange('card')}
             >
-              Fatura
+              Fatura/PDF
             </button>
           </div>
           {importMode === 'csv' ? (
             <>
               <Input label="Nome do arquivo" value={fileName} onChange={onFileNameChange} />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Select label="Conta padrao" value={csvDefaultAccountId} onChange={onCsvDefaultAccountIdChange} required>
+                  <option value="">Selecione</option>
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>{account.name}</option>
+                  ))}
+                </Select>
+                <Select label="Categoria padrao" value={csvDefaultCategoryId} onChange={onCsvDefaultCategoryIdChange}>
+                  <option value="">Usar regras</option>
+                  {expenseCategories.map((category) => (
+                    <option key={category.id} value={category.id}>{category.name}</option>
+                  ))}
+                </Select>
+              </div>
               <TextArea
                 label="CSV"
                 onChange={onContentChange}
-                placeholder="description,amount,type,date,accountId,categoryId,dueDate,isPaid,paymentDate"
+                placeholder="date,title,amount"
                 value={value}
               />
             </>
@@ -1344,6 +1419,18 @@ function ImportPanel({
             </>
           ) : (
             <>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-700">Arquivo da fatura</span>
+                <input
+                  accept=".pdf,.txt,.csv,application/pdf,text/plain,text/csv"
+                  className="w-full rounded-md border border-slate-300 px-3 py-2"
+                  type="file"
+                  onChange={(event) => onCardStatementTextFileChange(event.target.files?.[0] ?? null)}
+                />
+              </label>
+              {cardStatementContentBase64 && (
+                <p className="text-xs text-slate-500">PDF carregado. O texto sera extraido pela API no preview/importacao.</p>
+              )}
               <Input label="Nome do arquivo" value={cardStatementFileName} onChange={onCardStatementFileNameChange} />
               <div className="grid gap-3 sm:grid-cols-2">
                 <Select label="Conta do cartao" value={cardStatementAccountId} onChange={onCardStatementAccountIdChange} required>
@@ -1375,7 +1462,7 @@ function ImportPanel({
               <TextArea
                 label="Texto da fatura"
                 onChange={onCardStatementContentChange}
-                placeholder="01/06 Mercado Central R$ 120,50"
+                placeholder="Cole aqui o texto extraido do PDF. Exemplo: 01/06 Mercado Central R$ 120,50"
                 value={cardStatementContent}
               />
             </>

@@ -97,7 +97,7 @@ dotnet run --project backend/FinTrack.Api
 Swagger will be available at the URL printed by the API, usually:
 
 ```text
-https://localhost:7000/swagger
+http://localhost:5244/swagger
 ```
 
 Terminal 3: run the frontend:
@@ -111,13 +111,13 @@ npm.cmd run dev
 The frontend expects the API at:
 
 ```text
-https://localhost:7000
+http://localhost:5244
 ```
 
 To override it, create `frontend/fintrack-web/.env` using `.env.example`:
 
 ```text
-VITE_API_BASE_URL=https://localhost:7000
+VITE_API_BASE_URL=http://localhost:5244
 ```
 
 On shells that do not block PowerShell scripts, `npm run dev` also works.

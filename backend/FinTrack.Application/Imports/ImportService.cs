@@ -10,6 +10,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using UglyToad.PdfPig;
 
 namespace FinTrack.Application.Imports;
 
@@ -19,9 +20,19 @@ public sealed class ImportService : IImportService
     {
         "description",
         "amount",
-        "type",
-        "date",
-        "accountId"
+        "date"
+    };
+    private static readonly Dictionary<string, string[]> ColumnAliases = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["description"] = new[] { "description", "title", "descricao", "descrição", "historico", "histórico", "name", "nome" },
+        ["amount"] = new[] { "amount", "valor", "value", "total" },
+        ["type"] = new[] { "type", "tipo" },
+        ["date"] = new[] { "date", "data", "postedAt", "posted_at" },
+        ["accountId"] = new[] { "accountId", "account_id", "contaId", "conta_id" },
+        ["categoryId"] = new[] { "categoryId", "category_id", "categoriaId", "categoria_id" },
+        ["dueDate"] = new[] { "dueDate", "due_date", "vencimento" },
+        ["isPaid"] = new[] { "isPaid", "is_paid", "pago" },
+        ["paymentDate"] = new[] { "paymentDate", "payment_date", "dataPagamento", "data_pagamento" }
     };
     private static readonly Regex CardStatementLineRegex = new(
         @"^(?<date>\d{4}-\d{2}-\d{2}|\d{1,2}[\/.-]\d{1,2}(?:[\/.-]\d{2,4})?)\s+(?<description>.+?)\s+(?<amount>-?(?:R\$\s*)?(?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{2})|-?(?:R\$\s*)?\d+(?:\.\d{2})?)$",
@@ -52,7 +63,12 @@ public sealed class ImportService : IImportService
         CsvPreviewRequest request,
         CancellationToken cancellationToken)
     {
-        var rows = await ParseAndValidateAsync(userId, ParseCsv(request.Content), cancellationToken);
+        var rows = await ParseAndValidateAsync(
+            userId,
+            ParseCsv(request.Content),
+            request.DefaultAccountId,
+            request.DefaultCategoryId,
+            cancellationToken);
         return BuildPreview(rows);
     }
 
@@ -61,7 +77,12 @@ public sealed class ImportService : IImportService
         CommitCsvImportRequest request,
         CancellationToken cancellationToken)
     {
-        var rows = await ParseAndValidateAsync(userId, ParseCsv(request.Content), cancellationToken);
+        var rows = await ParseAndValidateAsync(
+            userId,
+            ParseCsv(request.Content),
+            request.DefaultAccountId,
+            request.DefaultCategoryId,
+            cancellationToken);
         return await CommitRowsAsync(
             userId,
             rows,
@@ -79,6 +100,8 @@ public sealed class ImportService : IImportService
         var rows = await ParseAndValidateAsync(
             userId,
             ParseExcel(request.ContentBase64, request.WorksheetName),
+            null,
+            null,
             cancellationToken);
 
         return BuildPreview(rows);
@@ -92,6 +115,8 @@ public sealed class ImportService : IImportService
         var rows = await ParseAndValidateAsync(
             userId,
             ParseExcel(request.ContentBase64, request.WorksheetName),
+            null,
+            null,
             cancellationToken);
         return await CommitRowsAsync(
             userId,
@@ -107,9 +132,12 @@ public sealed class ImportService : IImportService
         CardStatementPreviewRequest request,
         CancellationToken cancellationToken)
     {
+        var content = ExtractCardStatementContent(request.FileName, request.Content, request.ContentBase64);
         var rows = await ParseAndValidateAsync(
             userId,
-            ParseCardStatement(request.Content, request.AccountId, request.DueDate, request.IsPaid, request.PaymentDate),
+            ParseCardStatement(content, request.AccountId, request.DueDate, request.IsPaid, request.PaymentDate),
+            null,
+            null,
             cancellationToken);
 
         return BuildPreview(rows);
@@ -120,9 +148,12 @@ public sealed class ImportService : IImportService
         CommitCardStatementImportRequest request,
         CancellationToken cancellationToken)
     {
+        var content = ExtractCardStatementContent(request.FileName, request.Content, request.ContentBase64);
         var rows = await ParseAndValidateAsync(
             userId,
-            ParseCardStatement(request.Content, request.AccountId, request.DueDate, request.IsPaid, request.PaymentDate),
+            ParseCardStatement(content, request.AccountId, request.DueDate, request.IsPaid, request.PaymentDate),
+            null,
+            null,
             cancellationToken);
 
         return await CommitRowsAsync(
@@ -145,6 +176,8 @@ public sealed class ImportService : IImportService
     private async Task<IReadOnlyList<CsvImportRowPreviewDto>> ParseAndValidateAsync(
         Guid userId,
         List<List<string>> records,
+        Guid? defaultAccountId,
+        Guid? defaultCategoryId,
         CancellationToken cancellationToken)
     {
         if (records.Count == 0)
@@ -157,7 +190,7 @@ public sealed class ImportService : IImportService
             .ToDictionary(column => column.Name, column => column.Index, StringComparer.OrdinalIgnoreCase);
 
         var missingColumns = RequiredColumns
-            .Where(column => !header.ContainsKey(column))
+            .Where(column => !HasColumn(header, column))
             .ToList();
 
         var rows = new List<CsvImportRowPreviewDto>();
@@ -173,17 +206,32 @@ public sealed class ImportService : IImportService
                 errors.Add("Description is required.");
             }
 
-            var amount = TryParseDecimal(GetValue(values, header, "amount"));
-            if (amount is null or <= 0)
+            var signedAmount = TryParseDecimal(GetValue(values, header, "amount"));
+            if (signedAmount is null or 0)
             {
-                errors.Add("Amount must be greater than zero.");
+                errors.Add("Amount must be different from zero.");
             }
 
-            var type = TryParseEnum<TransactionType>(GetValue(values, header, "type"));
+            var typeValue = GetValue(values, header, "type");
+            var type = TryParseEnum<TransactionType>(typeValue);
+            if (type is null && string.IsNullOrWhiteSpace(typeValue) && signedAmount is not null)
+            {
+                type = signedAmount < 0 ? TransactionType.Income : TransactionType.Expense;
+            }
+
             if (type is null)
             {
                 errors.Add("Type must be Income or Expense.");
             }
+
+            if (type == TransactionType.Income &&
+                signedAmount < 0 &&
+                IsCreditCardPaymentDescription(description))
+            {
+                continue;
+            }
+
+            decimal? amount = signedAmount is null ? null : Math.Abs(signedAmount.Value);
 
             var date = TryParseDate(GetValue(values, header, "date"));
             if (date is null)
@@ -224,7 +272,7 @@ public sealed class ImportService : IImportService
                 errors.Add("Payment date must be empty when row is pending.");
             }
 
-            var accountId = TryParseGuid(GetValue(values, header, "accountId"));
+            var accountId = TryParseGuid(GetValue(values, header, "accountId")) ?? defaultAccountId;
             if (accountId is null ||
                 await _accountRepository.GetByIdAsync(userId, accountId.Value, cancellationToken) is null)
             {
@@ -250,6 +298,14 @@ public sealed class ImportService : IImportService
 
                 category = matchingRule?.Category;
                 categoryId = matchingRule?.CategoryId;
+            }
+
+            if (category is null &&
+                categoryId is null &&
+                defaultCategoryId is not null)
+            {
+                categoryId = defaultCategoryId.Value;
+                category = await _categoryRepository.GetByIdAsync(userId, categoryId.Value, cancellationToken);
             }
 
             if (category is null)
@@ -432,6 +488,46 @@ public sealed class ImportService : IImportService
         }
 
         return rows;
+    }
+
+    private static string ExtractCardStatementContent(string fileName, string content, string? contentBase64)
+    {
+        if (string.IsNullOrWhiteSpace(contentBase64))
+        {
+            return content;
+        }
+
+        var bytes = Convert.FromBase64String(RemoveDataUrlPrefix(contentBase64));
+        var isPdf = fileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) || IsPdf(bytes);
+        if (!isPdf)
+        {
+            return Encoding.UTF8.GetString(bytes);
+        }
+
+        using var document = PdfDocument.Open(bytes);
+        var builder = new StringBuilder();
+        foreach (var page in document.GetPages())
+        {
+            builder.AppendLine(page.Text);
+        }
+
+        return builder.ToString();
+    }
+
+    private static string RemoveDataUrlPrefix(string contentBase64)
+    {
+        var commaIndex = contentBase64.IndexOf(',');
+        return commaIndex >= 0 ? contentBase64[(commaIndex + 1)..] : contentBase64;
+    }
+
+    private static bool IsPdf(byte[] bytes)
+    {
+        return bytes.Length >= 5 &&
+               bytes[0] == '%' &&
+               bytes[1] == 'P' &&
+               bytes[2] == 'D' &&
+               bytes[3] == 'F' &&
+               bytes[4] == '-';
     }
 
     private static string NormalizeWhitespace(string value)
@@ -663,19 +759,58 @@ public sealed class ImportService : IImportService
 
     private static string GetValue(IReadOnlyList<string> values, Dictionary<string, int> header, string column)
     {
-        return header.TryGetValue(column, out var index) && index < values.Count ? values[index] : string.Empty;
+        if (!ColumnAliases.TryGetValue(column, out var aliases))
+        {
+            aliases = new[] { column };
+        }
+
+        foreach (var alias in aliases)
+        {
+            if (header.TryGetValue(alias, out var index) && index < values.Count)
+            {
+                return values[index];
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static bool HasColumn(Dictionary<string, int> header, string column)
+    {
+        if (!ColumnAliases.TryGetValue(column, out var aliases))
+        {
+            aliases = new[] { column };
+        }
+
+        return aliases.Any(header.ContainsKey);
     }
 
     private static decimal? TryParseDecimal(string value)
     {
-        return decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)
+        var normalized = value
+            .Replace("R$", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace(" ", string.Empty)
+            .Trim();
+
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return null;
+        }
+
+        if (normalized.Contains(','))
+        {
+            normalized = normalized.Replace(".", string.Empty).Replace(',', '.');
+        }
+
+        return decimal.TryParse(normalized, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)
             ? parsed
             : null;
     }
 
     private static DateOnly? TryParseDate(string value)
     {
-        return DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)
+        var formats = new[] { "yyyy-MM-dd", "dd/MM/yyyy", "d/M/yyyy", "dd-MM-yyyy", "d-M-yyyy", "dd.MM.yyyy", "d.M.yyyy" };
+        return DateOnly.TryParseExact(value.Trim(), formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)
             ? parsed
             : null;
     }
@@ -698,6 +833,14 @@ public sealed class ImportService : IImportService
     private static Guid? TryParseGuid(string value)
     {
         return Guid.TryParse(value, out var parsed) ? parsed : null;
+    }
+
+    private static bool IsCreditCardPaymentDescription(string description)
+    {
+        var normalized = description.ToLowerInvariant();
+        return normalized.Contains("pagamento") ||
+               normalized.Contains("payment") ||
+               normalized.Contains("recebido");
     }
 
     private static TEnum? TryParseEnum<TEnum>(string value)

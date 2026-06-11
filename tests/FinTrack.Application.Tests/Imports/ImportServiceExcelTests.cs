@@ -117,6 +117,37 @@ public class ImportServiceExcelTests
     }
 
     [Fact]
+    public async Task PreviewCsvAsync_WhenBankExportHasDateTitleAmount_UsesDefaultsAndSkipsCardPayment()
+    {
+        var fixture = TestFixture.Create();
+        var content =
+            """
+            date,title,amount
+            2026-06-10,Pix no Crédito - UNINTER,"121,39"
+            2026-06-09,Dm*Spotify,"23,90"
+            2026-06-01,Pagamento recebido,"- 1.237,11"
+            """;
+
+        var preview = await fixture.Service.PreviewCsvAsync(
+            fixture.UserId,
+            new CsvPreviewRequest(
+                "nubank.csv",
+                content,
+                fixture.Account.Id,
+                fixture.Category.Id),
+            CancellationToken.None);
+
+        Assert.Equal(2, preview.TotalRows);
+        Assert.Equal(2, preview.ValidRows);
+        Assert.All(preview.Rows, row => Assert.Empty(row.Errors));
+        Assert.Equal("Pix no Crédito - UNINTER", preview.Rows[0].Description);
+        Assert.Equal(121.39m, preview.Rows[0].Amount);
+        Assert.Equal(TransactionType.Expense, preview.Rows[0].Type);
+        Assert.Equal(fixture.Account.Id, preview.Rows[0].AccountId);
+        Assert.Equal(fixture.Category.Id, preview.Rows[0].CategoryId);
+    }
+
+    [Fact]
     public async Task PreviewCardStatementAsync_WhenKeywordMatches_UsesMatchedCategory()
     {
         var fixture = TestFixture.Create();
@@ -140,6 +171,7 @@ public class ImportServiceExcelTests
                 01/06 Mercado Central R$ 120,50
                 02/06 App Corrida 35.90
                 """,
+                null,
                 fixture.Account.Id,
                 new DateOnly(2026, 6, 10),
                 false,
@@ -173,6 +205,7 @@ public class ImportServiceExcelTests
             new CommitCardStatementImportRequest(
                 "fatura-cartao.txt",
                 "01/06 Mercado Central R$ 120,50",
+                null,
                 fixture.Account.Id,
                 new DateOnly(2026, 6, 10),
                 true,

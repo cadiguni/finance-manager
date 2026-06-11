@@ -199,6 +199,7 @@ export type UpdateCategoryKeywordRuleRequest = CreateCategoryKeywordRuleRequest
 export type CardStatementImportRequest = {
   fileName: string
   content: string
+  contentBase64: string | null
   accountId: string
   dueDate: string
   isPaid: boolean
@@ -214,16 +215,23 @@ type TransactionFilters = {
   isPaid?: boolean | ''
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'https://localhost:7000'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5244'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...init?.headers,
-    },
-    ...init,
-  })
+  const url = `${API_BASE_URL}${path}`
+  let response: Response
+
+  try {
+    response = await fetch(url, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...init?.headers,
+      },
+      ...init,
+    })
+  } catch {
+    throw new Error(`Nao foi possivel conectar na API em ${API_BASE_URL}.`)
+  }
 
   if (!response.ok) {
     const message = await response
@@ -321,15 +329,15 @@ export const api = {
     }),
   getForecast: (year: number, month: number, months = 6) =>
     request<ForecastMonth[]>(`/api/forecast${toQueryString({ year, month, months })}`),
-  previewCsvImport: (fileName: string, content: string) =>
+  previewCsvImport: (fileName: string, content: string, defaultAccountId: string | null, defaultCategoryId: string | null) =>
     request<CsvImportPreview>('/api/imports/csv/preview', {
       method: 'POST',
-      body: JSON.stringify({ fileName, content }),
+      body: JSON.stringify({ fileName, content, defaultAccountId, defaultCategoryId }),
     }),
-  commitCsvImport: (fileName: string, content: string) =>
+  commitCsvImport: (fileName: string, content: string, defaultAccountId: string | null, defaultCategoryId: string | null) =>
     request<ImportBatch>('/api/imports/csv/commit', {
       method: 'POST',
-      body: JSON.stringify({ fileName, content }),
+      body: JSON.stringify({ fileName, content, defaultAccountId, defaultCategoryId }),
     }),
   previewExcelImport: (fileName: string, contentBase64: string, worksheetName: string | null) =>
     request<CsvImportPreview>('/api/imports/excel/preview', {
