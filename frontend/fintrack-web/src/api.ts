@@ -196,6 +196,15 @@ export type CreateCategoryKeywordRuleRequest = {
 
 export type UpdateCategoryKeywordRuleRequest = CreateCategoryKeywordRuleRequest
 
+export type CardStatementImportRequest = {
+  fileName: string
+  content: string
+  accountId: string
+  dueDate: string
+  isPaid: boolean
+  paymentDate: string | null
+}
+
 type TransactionFilters = {
   startDate?: string
   endDate?: string
@@ -331,6 +340,16 @@ export const api = {
     request<ImportBatch>('/api/imports/excel/commit', {
       method: 'POST',
       body: JSON.stringify({ fileName, contentBase64, worksheetName }),
+    }),
+  previewCardStatementImport: (statement: CardStatementImportRequest) =>
+    request<CsvImportPreview>('/api/imports/card-statement/preview', {
+      method: 'POST',
+      body: JSON.stringify(statement),
+    }),
+  commitCardStatementImport: (statement: CardStatementImportRequest) =>
+    request<ImportBatch>('/api/imports/card-statement/commit', {
+      method: 'POST',
+      body: JSON.stringify(statement),
     }),
   getImportHistory: () => request<ImportBatch[]>('/api/imports'),
   getCategoryKeywordRules: () =>

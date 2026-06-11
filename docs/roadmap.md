@@ -24,10 +24,10 @@
 
 ## Phase 3
 
-- Excel import - in progress
-- PDF import
+- Excel import
+- PDF/card statement text import
 - Credit card statement parsing
-- Automatic categorization by keywords - in progress
+- Automatic categorization by keywords
 - Monthly budget by category
 - Report export
 - JWT authentication

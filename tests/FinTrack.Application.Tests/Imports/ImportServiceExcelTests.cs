@@ -116,6 +116,78 @@ public class ImportServiceExcelTests
         Assert.Empty(preview.Rows[0].Errors);
     }
 
+    [Fact]
+    public async Task PreviewCardStatementAsync_WhenKeywordMatches_UsesMatchedCategory()
+    {
+        var fixture = TestFixture.Create();
+        fixture.KeywordRuleRepository.Rules.Add(new CategoryKeywordRule
+        {
+            UserId = fixture.UserId,
+            CategoryId = fixture.Category.Id,
+            Category = fixture.Category,
+            Keyword = "mercado",
+            TransactionType = TransactionType.Expense,
+            Priority = 10,
+            IsActive = true
+        });
+
+        var preview = await fixture.Service.PreviewCardStatementAsync(
+            fixture.UserId,
+            new CardStatementPreviewRequest(
+                "fatura.txt",
+                """
+                Data Descricao Valor
+                01/06 Mercado Central R$ 120,50
+                02/06 App Corrida 35.90
+                """,
+                fixture.Account.Id,
+                new DateOnly(2026, 6, 10),
+                false,
+                null),
+            CancellationToken.None);
+
+        Assert.Equal(2, preview.TotalRows);
+        Assert.Equal(1, preview.ValidRows);
+        Assert.Equal(fixture.Category.Id, preview.Rows[0].CategoryId);
+        Assert.Equal(new DateOnly(2026, 6, 1), preview.Rows[0].Date);
+        Assert.Contains("Category not found.", preview.Rows[1].Errors);
+    }
+
+    [Fact]
+    public async Task CommitCardStatementAsync_WhenRowsAreValid_AddsTransactionsAndPdfBatch()
+    {
+        var fixture = TestFixture.Create();
+        fixture.KeywordRuleRepository.Rules.Add(new CategoryKeywordRule
+        {
+            UserId = fixture.UserId,
+            CategoryId = fixture.Category.Id,
+            Category = fixture.Category,
+            Keyword = "mercado",
+            TransactionType = TransactionType.Expense,
+            Priority = 10,
+            IsActive = true
+        });
+
+        var result = await fixture.Service.CommitCardStatementAsync(
+            fixture.UserId,
+            new CommitCardStatementImportRequest(
+                "fatura-cartao.txt",
+                "01/06 Mercado Central R$ 120,50",
+                fixture.Account.Id,
+                new DateOnly(2026, 6, 10),
+                true,
+                new DateOnly(2026, 6, 10)),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(fixture.TransactionRepository.Transactions);
+        Assert.Single(fixture.ImportBatchRepository.Batches);
+        Assert.Equal(FileImportType.Pdf, fixture.ImportBatchRepository.Batches[0].FileType);
+        Assert.Equal("Mercado Central", fixture.TransactionRepository.Transactions[0].Description);
+        Assert.Equal(120.50m, fixture.TransactionRepository.Transactions[0].Amount);
+        Assert.True(fixture.TransactionRepository.Transactions[0].IsPaid);
+    }
+
     private sealed record TestFixture(
         Guid UserId,
         ImportService Service,

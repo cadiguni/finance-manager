@@ -8,6 +8,7 @@ using FinTrack.Domain.Enums;
 using System.Globalization;
 using System.IO.Compression;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 namespace FinTrack.Application.Imports;
@@ -22,6 +23,9 @@ public sealed class ImportService : IImportService
         "date",
         "accountId"
     };
+    private static readonly Regex CardStatementLineRegex = new(
+        @"^(?<date>\d{4}-\d{2}-\d{2}|\d{1,2}[\/.-]\d{1,2}(?:[\/.-]\d{2,4})?)\s+(?<description>.+?)\s+(?<amount>-?(?:R\$\s*)?(?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{2})|-?(?:R\$\s*)?\d+(?:\.\d{2})?)$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private readonly IImportBatchRepository _importBatchRepository;
     private readonly ITransactionRepository _transactionRepository;
@@ -58,44 +62,13 @@ public sealed class ImportService : IImportService
         CancellationToken cancellationToken)
     {
         var rows = await ParseAndValidateAsync(userId, ParseCsv(request.Content), cancellationToken);
-        var validRows = rows.Where(row => row.Errors.Count == 0).ToList();
-
-        var batch = new ImportBatch
-        {
-            UserId = userId,
-            FileName = string.IsNullOrWhiteSpace(request.FileName) ? "import.csv" : request.FileName.Trim(),
-            FileType = FileImportType.Csv,
-            ImportedAt = DateTime.UtcNow,
-            TotalRows = rows.Count,
-            SuccessRows = validRows.Count,
-            FailedRows = rows.Count - validRows.Count,
-            Status = validRows.Count == 0 ? FileImportStatus.Failed : FileImportStatus.Completed
-        };
-
-        await _importBatchRepository.AddAsync(batch, cancellationToken);
-
-        foreach (var row in validRows)
-        {
-            await _transactionRepository.AddAsync(new Transaction
-            {
-                UserId = userId,
-                AccountId = row.AccountId!.Value,
-                CategoryId = row.CategoryId!.Value,
-                Description = row.Description,
-                Amount = row.Amount!.Value,
-                Type = row.Type!.Value,
-                Date = row.Date!.Value,
-                DueDate = row.DueDate,
-                IsPaid = row.IsPaid ?? false,
-                PaymentDate = row.PaymentDate
-            }, cancellationToken);
-        }
-
-        await _transactionRepository.SaveChangesAsync(cancellationToken);
-
-        return validRows.Count == 0
-            ? Result<ImportBatchDto>.Failure("CSV import has no valid rows.")
-            : Result<ImportBatchDto>.Success(MapToDto(batch));
+        return await CommitRowsAsync(
+            userId,
+            rows,
+            string.IsNullOrWhiteSpace(request.FileName) ? "import.csv" : request.FileName.Trim(),
+            FileImportType.Csv,
+            "CSV import has no valid rows.",
+            cancellationToken);
     }
 
     public async Task<CsvImportPreviewDto> PreviewExcelAsync(
@@ -120,44 +93,45 @@ public sealed class ImportService : IImportService
             userId,
             ParseExcel(request.ContentBase64, request.WorksheetName),
             cancellationToken);
-        var validRows = rows.Where(row => row.Errors.Count == 0).ToList();
+        return await CommitRowsAsync(
+            userId,
+            rows,
+            string.IsNullOrWhiteSpace(request.FileName) ? "import.xlsx" : request.FileName.Trim(),
+            FileImportType.Excel,
+            "Excel import has no valid rows.",
+            cancellationToken);
+    }
 
-        var batch = new ImportBatch
-        {
-            UserId = userId,
-            FileName = string.IsNullOrWhiteSpace(request.FileName) ? "import.xlsx" : request.FileName.Trim(),
-            FileType = FileImportType.Excel,
-            ImportedAt = DateTime.UtcNow,
-            TotalRows = rows.Count,
-            SuccessRows = validRows.Count,
-            FailedRows = rows.Count - validRows.Count,
-            Status = validRows.Count == 0 ? FileImportStatus.Failed : FileImportStatus.Completed
-        };
+    public async Task<CsvImportPreviewDto> PreviewCardStatementAsync(
+        Guid userId,
+        CardStatementPreviewRequest request,
+        CancellationToken cancellationToken)
+    {
+        var rows = await ParseAndValidateAsync(
+            userId,
+            ParseCardStatement(request.Content, request.AccountId, request.DueDate, request.IsPaid, request.PaymentDate),
+            cancellationToken);
 
-        await _importBatchRepository.AddAsync(batch, cancellationToken);
+        return BuildPreview(rows);
+    }
 
-        foreach (var row in validRows)
-        {
-            await _transactionRepository.AddAsync(new Transaction
-            {
-                UserId = userId,
-                AccountId = row.AccountId!.Value,
-                CategoryId = row.CategoryId!.Value,
-                Description = row.Description,
-                Amount = row.Amount!.Value,
-                Type = row.Type!.Value,
-                Date = row.Date!.Value,
-                DueDate = row.DueDate,
-                IsPaid = row.IsPaid ?? false,
-                PaymentDate = row.PaymentDate
-            }, cancellationToken);
-        }
+    public async Task<Result<ImportBatchDto>> CommitCardStatementAsync(
+        Guid userId,
+        CommitCardStatementImportRequest request,
+        CancellationToken cancellationToken)
+    {
+        var rows = await ParseAndValidateAsync(
+            userId,
+            ParseCardStatement(request.Content, request.AccountId, request.DueDate, request.IsPaid, request.PaymentDate),
+            cancellationToken);
 
-        await _transactionRepository.SaveChangesAsync(cancellationToken);
-
-        return validRows.Count == 0
-            ? Result<ImportBatchDto>.Failure("Excel import has no valid rows.")
-            : Result<ImportBatchDto>.Success(MapToDto(batch));
+        return await CommitRowsAsync(
+            userId,
+            rows,
+            string.IsNullOrWhiteSpace(request.FileName) ? "card-statement.txt" : request.FileName.Trim(),
+            FileImportType.Pdf,
+            "Card statement import has no valid rows.",
+            cancellationToken);
     }
 
     public async Task<IReadOnlyList<ImportBatchDto>> GetHistoryAsync(
@@ -307,6 +281,54 @@ public sealed class ImportService : IImportService
         return rows;
     }
 
+    private async Task<Result<ImportBatchDto>> CommitRowsAsync(
+        Guid userId,
+        IReadOnlyList<CsvImportRowPreviewDto> rows,
+        string fileName,
+        FileImportType fileType,
+        string emptyRowsError,
+        CancellationToken cancellationToken)
+    {
+        var validRows = rows.Where(row => row.Errors.Count == 0).ToList();
+
+        var batch = new ImportBatch
+        {
+            UserId = userId,
+            FileName = fileName,
+            FileType = fileType,
+            ImportedAt = DateTime.UtcNow,
+            TotalRows = rows.Count,
+            SuccessRows = validRows.Count,
+            FailedRows = rows.Count - validRows.Count,
+            Status = validRows.Count == 0 ? FileImportStatus.Failed : FileImportStatus.Completed
+        };
+
+        await _importBatchRepository.AddAsync(batch, cancellationToken);
+
+        foreach (var row in validRows)
+        {
+            await _transactionRepository.AddAsync(new Transaction
+            {
+                UserId = userId,
+                AccountId = row.AccountId!.Value,
+                CategoryId = row.CategoryId!.Value,
+                Description = row.Description,
+                Amount = row.Amount!.Value,
+                Type = row.Type!.Value,
+                Date = row.Date!.Value,
+                DueDate = row.DueDate,
+                IsPaid = row.IsPaid ?? false,
+                PaymentDate = row.PaymentDate
+            }, cancellationToken);
+        }
+
+        await _transactionRepository.SaveChangesAsync(cancellationToken);
+
+        return validRows.Count == 0
+            ? Result<ImportBatchDto>.Failure(emptyRowsError)
+            : Result<ImportBatchDto>.Success(MapToDto(batch));
+    }
+
     private static List<List<string>> ParseExcel(string contentBase64, string? worksheetName)
     {
         var bytes = Convert.FromBase64String(contentBase64);
@@ -344,6 +366,141 @@ public sealed class ImportService : IImportService
         }
 
         return rows;
+    }
+
+    private static List<List<string>> ParseCardStatement(
+        string content,
+        Guid accountId,
+        DateOnly dueDate,
+        bool isPaid,
+        DateOnly? paymentDate)
+    {
+        var rows = new List<List<string>>
+        {
+            new()
+            {
+                "description",
+                "amount",
+                "type",
+                "date",
+                "accountId",
+                "categoryId",
+                "dueDate",
+                "isPaid",
+                "paymentDate"
+            }
+        };
+
+        foreach (var line in content.Replace("\r\n", "\n").Split('\n'))
+        {
+            var trimmed = NormalizeWhitespace(line);
+            if (string.IsNullOrWhiteSpace(trimmed))
+            {
+                continue;
+            }
+
+            var match = CardStatementLineRegex.Match(trimmed);
+            if (!match.Success)
+            {
+                if (ShouldIgnoreCardStatementLine(trimmed))
+                {
+                    continue;
+                }
+
+                continue;
+            }
+
+            var parsedDate = ParseCardStatementDate(match.Groups["date"].Value, dueDate);
+            var parsedAmount = ParseCardStatementAmount(match.Groups["amount"].Value);
+            if (parsedDate is null || parsedAmount is null or <= 0)
+            {
+                continue;
+            }
+
+            rows.Add(new List<string>
+            {
+                match.Groups["description"].Value.Trim(),
+                parsedAmount.Value.ToString(CultureInfo.InvariantCulture),
+                TransactionType.Expense.ToString(),
+                parsedDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                accountId.ToString(),
+                string.Empty,
+                dueDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                isPaid.ToString(CultureInfo.InvariantCulture),
+                isPaid ? (paymentDate ?? dueDate).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : string.Empty
+            });
+        }
+
+        return rows;
+    }
+
+    private static string NormalizeWhitespace(string value)
+    {
+        return string.Join(' ', value.Split(Array.Empty<char>(), StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private static bool ShouldIgnoreCardStatementLine(string line)
+    {
+        var normalized = line.ToLowerInvariant();
+        return normalized.StartsWith("data ") ||
+               normalized.Contains("total") ||
+               normalized.Contains("pagamento") ||
+               normalized.Contains("vencimento") ||
+               normalized.Contains("fatura");
+    }
+
+    private static DateOnly? ParseCardStatementDate(string value, DateOnly dueDate)
+    {
+        if (DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var isoDate))
+        {
+            return isoDate;
+        }
+
+        var formats = new[] { "dd/MM/yyyy", "d/M/yyyy", "dd-MM-yyyy", "d-M-yyyy", "dd.MM.yyyy", "d.M.yyyy" };
+        if (DateOnly.TryParseExact(value, formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var fullDate))
+        {
+            return fullDate;
+        }
+
+        var separator = value.Contains('/') ? '/' : value.Contains('-') ? '-' : '.';
+        var parts = value.Split(separator);
+        if (parts.Length != 2 ||
+            !int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var day) ||
+            !int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var month))
+        {
+            return null;
+        }
+
+        var year = dueDate.Year;
+        if (dueDate.Month == 1 && month == 12)
+        {
+            year--;
+        }
+
+        try
+        {
+            return new DateOnly(year, month, day);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return null;
+        }
+    }
+
+    private static decimal? ParseCardStatementAmount(string value)
+    {
+        var normalized = value
+            .Replace("R$", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Trim();
+
+        if (normalized.Contains(','))
+        {
+            normalized = normalized.Replace(".", string.Empty).Replace(',', '.');
+        }
+
+        return decimal.TryParse(normalized, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)
+            ? Math.Abs(parsed)
+            : null;
     }
 
     private static IReadOnlyList<string> ReadSharedStrings(ZipArchive archive)

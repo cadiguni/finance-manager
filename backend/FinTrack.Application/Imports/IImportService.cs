@@ -24,5 +24,15 @@ public interface IImportService
         CommitExcelImportRequest request,
         CancellationToken cancellationToken);
 
+    Task<CsvImportPreviewDto> PreviewCardStatementAsync(
+        Guid userId,
+        CardStatementPreviewRequest request,
+        CancellationToken cancellationToken);
+
+    Task<Result<ImportBatchDto>> CommitCardStatementAsync(
+        Guid userId,
+        CommitCardStatementImportRequest request,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<ImportBatchDto>> GetHistoryAsync(Guid userId, CancellationToken cancellationToken);
 }

@@ -45,7 +45,7 @@ type TransactionFilters = {
   isPaid: '' | 'true' | 'false'
 }
 
-type ImportMode = 'csv' | 'excel'
+type ImportMode = 'csv' | 'excel' | 'card'
 
 const currency = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -147,6 +147,12 @@ function App() {
   const [excelFileName, setExcelFileName] = useState('import.xlsx')
   const [excelContentBase64, setExcelContentBase64] = useState('')
   const [excelWorksheetName, setExcelWorksheetName] = useState('')
+  const [cardStatementFileName, setCardStatementFileName] = useState('fatura-cartao.txt')
+  const [cardStatementContent, setCardStatementContent] = useState('')
+  const [cardStatementAccountId, setCardStatementAccountId] = useState('')
+  const [cardStatementDueDate, setCardStatementDueDate] = useState(todayText)
+  const [cardStatementIsPaid, setCardStatementIsPaid] = useState(false)
+  const [cardStatementPaymentDate, setCardStatementPaymentDate] = useState(todayText)
   const [filters, setFilters] = useState<TransactionFilters>(initialFilters)
   const [year, setYear] = useState(currentYear)
   const [month, setMonth] = useState(currentMonth)
@@ -483,6 +489,47 @@ function App() {
     }
   }
 
+  function buildCardStatementPayload() {
+    return {
+      fileName: cardStatementFileName,
+      content: cardStatementContent,
+      accountId: cardStatementAccountId,
+      dueDate: cardStatementDueDate,
+      isPaid: cardStatementIsPaid,
+      paymentDate: cardStatementIsPaid ? cardStatementPaymentDate || cardStatementDueDate : null,
+    }
+  }
+
+  async function previewCardStatementImport() {
+    setIsImporting(true)
+    setError(null)
+
+    try {
+      const preview = await api.previewCardStatementImport(buildCardStatementPayload())
+      setCsvPreview(preview)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao validar fatura.')
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
+  async function commitCardStatementImport() {
+    setIsImporting(true)
+    setError(null)
+
+    try {
+      await api.commitCardStatementImport(buildCardStatementPayload())
+      setCardStatementContent('')
+      setCsvPreview(null)
+      await loadData()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao importar fatura.')
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
   async function selectExcelFile(file: File | null) {
     setCsvPreview(null)
     setExcelContentBase64('')
@@ -685,6 +732,12 @@ function App() {
               />
               <ImportPanel
                 accounts={accounts}
+                cardStatementAccountId={cardStatementAccountId}
+                cardStatementContent={cardStatementContent}
+                cardStatementDueDate={cardStatementDueDate}
+                cardStatementFileName={cardStatementFileName}
+                cardStatementIsPaid={cardStatementIsPaid}
+                cardStatementPaymentDate={cardStatementPaymentDate}
                 categories={categories}
                 excelFileName={excelFileName}
                 excelReady={Boolean(excelContentBase64)}
@@ -693,7 +746,21 @@ function App() {
                 history={importHistory}
                 importMode={importMode}
                 isImporting={isImporting}
-                onCommit={() => void (importMode === 'csv' ? commitCsvImport() : commitExcelImport())}
+                onCardStatementAccountIdChange={setCardStatementAccountId}
+                onCardStatementContentChange={setCardStatementContent}
+                onCardStatementDueDateChange={setCardStatementDueDate}
+                onCardStatementFileNameChange={setCardStatementFileName}
+                onCardStatementIsPaidChange={setCardStatementIsPaid}
+                onCardStatementPaymentDateChange={setCardStatementPaymentDate}
+                onCommit={() => {
+                  if (importMode === 'csv') {
+                    void commitCsvImport()
+                  } else if (importMode === 'excel') {
+                    void commitExcelImport()
+                  } else {
+                    void commitCardStatementImport()
+                  }
+                }}
                 onContentChange={setCsvContent}
                 onExcelFileChange={(file) => void selectExcelFile(file)}
                 onExcelWorksheetNameChange={setExcelWorksheetName}
@@ -702,7 +769,15 @@ function App() {
                   setImportMode(mode)
                   setCsvPreview(null)
                 }}
-                onPreview={() => void (importMode === 'csv' ? previewCsvImport() : previewExcelImport())}
+                onPreview={() => {
+                  if (importMode === 'csv') {
+                    void previewCsvImport()
+                  } else if (importMode === 'excel') {
+                    void previewExcelImport()
+                  } else {
+                    void previewCardStatementImport()
+                  }
+                }}
                 preview={csvPreview}
                 value={csvContent}
               />
@@ -1135,6 +1210,12 @@ function CategorizationPanel({
 
 function ImportPanel({
   accounts,
+  cardStatementAccountId,
+  cardStatementContent,
+  cardStatementDueDate,
+  cardStatementFileName,
+  cardStatementIsPaid,
+  cardStatementPaymentDate,
   categories,
   excelFileName,
   excelReady,
@@ -1143,6 +1224,12 @@ function ImportPanel({
   history,
   importMode,
   isImporting,
+  onCardStatementAccountIdChange,
+  onCardStatementContentChange,
+  onCardStatementDueDateChange,
+  onCardStatementFileNameChange,
+  onCardStatementIsPaidChange,
+  onCardStatementPaymentDateChange,
   onCommit,
   onContentChange,
   onExcelFileChange,
@@ -1154,6 +1241,12 @@ function ImportPanel({
   value,
 }: {
   accounts: Account[]
+  cardStatementAccountId: string
+  cardStatementContent: string
+  cardStatementDueDate: string
+  cardStatementFileName: string
+  cardStatementIsPaid: boolean
+  cardStatementPaymentDate: string
   categories: Category[]
   excelFileName: string
   excelReady: boolean
@@ -1162,6 +1255,12 @@ function ImportPanel({
   history: ImportBatch[]
   importMode: ImportMode
   isImporting: boolean
+  onCardStatementAccountIdChange: (value: string) => void
+  onCardStatementContentChange: (value: string) => void
+  onCardStatementDueDateChange: (value: string) => void
+  onCardStatementFileNameChange: (value: string) => void
+  onCardStatementIsPaidChange: (value: boolean) => void
+  onCardStatementPaymentDateChange: (value: string) => void
   onCommit: () => void
   onContentChange: (value: string) => void
   onExcelFileChange: (file: File | null) => void
@@ -1174,8 +1273,14 @@ function ImportPanel({
 }) {
   const accountById = new Map(accounts.map((account) => [account.id, account.name]))
   const categoryById = new Map(categories.map((category) => [category.id, category.name]))
+  const creditCardAccounts = accounts.filter((account) => account.type === 'CreditCard')
   const canCommit = Boolean(preview && preview.validRows > 0)
-  const canPreview = importMode === 'csv' ? Boolean(value.trim()) : excelReady
+  const canPreview =
+    importMode === 'csv'
+      ? Boolean(value.trim())
+      : importMode === 'excel'
+        ? excelReady
+        : Boolean(cardStatementContent.trim() && cardStatementAccountId && cardStatementDueDate)
 
   return (
     <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
@@ -1200,6 +1305,13 @@ function ImportPanel({
             >
               Excel
             </button>
+            <button
+              className={`rounded px-3 py-1.5 font-medium ${importMode === 'card' ? 'bg-slate-950 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+              type="button"
+              onClick={() => onModeChange('card')}
+            >
+              Fatura
+            </button>
           </div>
           {importMode === 'csv' ? (
             <>
@@ -1211,7 +1323,7 @@ function ImportPanel({
                 value={value}
               />
             </>
-          ) : (
+          ) : importMode === 'excel' ? (
             <>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-700">Arquivo Excel</span>
@@ -1228,6 +1340,43 @@ function ImportPanel({
                 placeholder="Opcional"
                 value={excelWorksheetName}
                 onChange={onExcelWorksheetNameChange}
+              />
+            </>
+          ) : (
+            <>
+              <Input label="Nome do arquivo" value={cardStatementFileName} onChange={onCardStatementFileNameChange} />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Select label="Conta do cartao" value={cardStatementAccountId} onChange={onCardStatementAccountIdChange} required>
+                  <option value="">Selecione</option>
+                  {(creditCardAccounts.length ? creditCardAccounts : accounts).map((account) => (
+                    <option key={account.id} value={account.id}>{account.name}</option>
+                  ))}
+                </Select>
+                <Input label="Vencimento" type="date" value={cardStatementDueDate} onChange={onCardStatementDueDateChange} required />
+              </div>
+              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                <input
+                  checked={cardStatementIsPaid}
+                  className="h-4 w-4 rounded border-slate-300"
+                  type="checkbox"
+                  onChange={(event) => onCardStatementIsPaidChange(event.target.checked)}
+                />
+                Fatura paga
+              </label>
+              {cardStatementIsPaid && (
+                <Input
+                  label="Data de pagamento"
+                  type="date"
+                  value={cardStatementPaymentDate}
+                  onChange={onCardStatementPaymentDateChange}
+                  required
+                />
+              )}
+              <TextArea
+                label="Texto da fatura"
+                onChange={onCardStatementContentChange}
+                placeholder="01/06 Mercado Central R$ 120,50"
+                value={cardStatementContent}
               />
             </>
           )}

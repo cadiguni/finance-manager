@@ -87,6 +87,29 @@ public sealed class ImportsController : ControllerBase
         return Ok(result.Value);
     }
 
+    [HttpPost("card-statement/preview")]
+    public async Task<ActionResult<CsvImportPreviewDto>> PreviewCardStatement(
+        CardStatementPreviewRequest request,
+        CancellationToken cancellationToken)
+    {
+        var preview = await _importService.PreviewCardStatementAsync(DemoUserId, request, cancellationToken);
+        return Ok(preview);
+    }
+
+    [HttpPost("card-statement/commit")]
+    public async Task<ActionResult<ImportBatchDto>> CommitCardStatement(
+        CommitCardStatementImportRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _importService.CommitCardStatementAsync(DemoUserId, request, cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return BadRequest(new { message = result.Error });
+        }
+
+        return Ok(result.Value);
+    }
+
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<ImportBatchDto>>> GetHistory(
         CancellationToken cancellationToken)

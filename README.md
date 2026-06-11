@@ -15,7 +15,7 @@ The project is starting with the backend MVP:
 - Monthly dashboard summary
 - React frontend with Vite, TypeScript, Tailwind CSS and Recharts
 - Frontend forms for accounts, categories and transactions
-- CSV and Excel imports with preview, validation and import history
+- CSV, Excel and credit card statement imports with preview, validation and import history
 - Automatic categorization by keyword rules during imports
 
 ## Project Structure
@@ -52,12 +52,27 @@ Services:
 
 In `Development`, the API applies EF Core migrations automatically on startup.
 
-## Running Locally For Development
-
-Start PostgreSQL:
+Stop the stack:
 
 ```powershell
-docker compose -f infra/docker-compose.yml up -d
+docker compose -f infra/docker-compose.yml down
+```
+
+Reset the local Docker database when you want a clean seed:
+
+```powershell
+docker compose -f infra/docker-compose.yml down -v
+docker compose -f infra/docker-compose.yml up --build
+```
+
+## Running Locally For Development
+
+Use three terminals.
+
+Terminal 1: start PostgreSQL:
+
+```powershell
+docker compose -f infra/docker-compose.yml up -d postgres
 ```
 
 Restore and build the backend:
@@ -67,13 +82,13 @@ dotnet restore
 dotnet build
 ```
 
-Apply database migrations when running the API outside Docker:
+Apply database migrations when running the API outside Docker. Install `dotnet-ef` first if needed with `dotnet tool install --global dotnet-ef`.
 
 ```powershell
 dotnet ef database update --project backend/FinTrack.Infrastructure --startup-project backend/FinTrack.Api
 ```
 
-Run the API:
+Terminal 2: run the API:
 
 ```powershell
 dotnet run --project backend/FinTrack.Api
@@ -85,12 +100,12 @@ Swagger will be available at the URL printed by the API, usually:
 https://localhost:7000/swagger
 ```
 
-Run the frontend in another terminal:
+Terminal 3: run the frontend:
 
 ```powershell
 cd frontend/fintrack-web
 npm install
-npm run dev
+npm.cmd run dev
 ```
 
 The frontend expects the API at:
@@ -104,6 +119,8 @@ To override it, create `frontend/fintrack-web/.env` using `.env.example`:
 ```text
 VITE_API_BASE_URL=https://localhost:7000
 ```
+
+On shells that do not block PowerShell scripts, `npm run dev` also works.
 
 The first frontend screen includes:
 
@@ -136,6 +153,7 @@ Current unit coverage focuses on:
 - `AccountService`
 - `TransactionService`
 - Excel import parsing and commit flow
+- credit card statement parsing and commit flow
 
 ## CI
 
@@ -246,6 +264,8 @@ The monthly summary returns:
 - `POST /api/imports/csv/commit`
 - `POST /api/imports/excel/preview`
 - `POST /api/imports/excel/commit`
+- `POST /api/imports/card-statement/preview`
+- `POST /api/imports/card-statement/commit`
 - `GET /api/imports`
 - `GET /api/category-keyword-rules`
 - `POST /api/category-keyword-rules`
@@ -269,6 +289,40 @@ Both formats use the same columns:
 Required columns are `description`, `amount`, `type`, `date` and `accountId`. Dates must use `yyyy-MM-dd`.
 
 `categoryId` can be left empty when a matching active keyword rule exists for the transaction description and type. Higher-priority rules are evaluated first.
+
+Credit card statement requests send:
+
+- `fileName`
+- `content`
+- `accountId`
+- `dueDate`
+- `isPaid`
+- `paymentDate`
+
+The current statement parser expects pasted text extracted from a PDF or copied from a card statement. Each purchase line should follow this shape:
+
+```text
+01/06 Mercado Central R$ 120,50
+02/06 App Corrida 35.90
+2026-06-03 Streaming 29.90
+```
+
+Supported purchase dates are `dd/MM`, `dd/MM/yyyy` and `yyyy-MM-dd`. When the line uses `dd/MM`, the year is inferred from `dueDate`. Imported statement rows are created as `Expense` transactions for the selected card account, using the statement due date as `dueDate`. Leave category matching to active keyword rules by registering rules in the category keyword panel before importing.
+
+Example card statement preview request:
+
+```json
+{
+  "fileName": "fatura-junho.txt",
+  "content": "01/06 Mercado Central R$ 120,50\n02/06 App Corrida 35.90",
+  "accountId": "00000000-0000-0000-0000-000000000000",
+  "dueDate": "2026-06-10",
+  "isPaid": false,
+  "paymentDate": null
+}
+```
+
+The app does not read binary `.pdf` files directly yet. For now, extract or copy the statement text and paste it into the `Fatura` import mode in the frontend.
 
 ## Notes
 
