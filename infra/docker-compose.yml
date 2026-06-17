@@ -34,7 +34,7 @@ services:
     build:
       context: ../frontend/fintrack-web
       args:
-        VITE_API_BASE_URL: http://localhost:5000
+        VITE_API_BASE_URL: ""
     container_name: fintrack-web
     ports:
       - "3000:80"
