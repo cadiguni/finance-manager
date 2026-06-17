@@ -69,9 +69,13 @@ public sealed class CategoriesController : ControllerBase
         var result = await _categoryService.DeleteAsync(DemoUserId, id, cancellationToken);
         if (!result.IsSuccess)
         {
-            return result.Error == "Category not found."
-                ? NotFound()
-                : BadRequest(new { message = result.Error });
+            return result.Error switch
+            {
+                "Category not found." => NotFound(),
+                "Category has subcategories and cannot be deleted." => Conflict(new { message = result.Error }),
+                "Category has transactions and cannot be deleted." => Conflict(new { message = result.Error }),
+                _ => BadRequest(new { message = result.Error })
+            };
         }
 
         return NoContent();

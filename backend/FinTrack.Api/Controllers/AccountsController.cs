@@ -69,9 +69,12 @@ public sealed class AccountsController : ControllerBase
         var result = await _accountService.DeleteAsync(DemoUserId, id, cancellationToken);
         if (!result.IsSuccess)
         {
-            return result.Error == "Account not found."
-                ? NotFound()
-                : BadRequest(new { message = result.Error });
+            return result.Error switch
+            {
+                "Account not found." => NotFound(),
+                "Account has transactions and cannot be deleted." => Conflict(new { message = result.Error }),
+                _ => BadRequest(new { message = result.Error })
+            };
         }
 
         return NoContent();

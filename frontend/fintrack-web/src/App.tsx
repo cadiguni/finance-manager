@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ArrowDownCircle,
   ArrowUpCircle,
@@ -194,9 +194,12 @@ function App() {
     [categories],
   )
 
-  async function loadData() {
-    setIsLoading(true)
-    setError(null)
+  const loadData = useCallback(async (options: { showLoading?: boolean } = {}) => {
+    const showLoading = options.showLoading ?? true
+    if (showLoading) {
+      setIsLoading(true)
+      setError(null)
+    }
 
     try {
       const [
@@ -240,11 +243,24 @@ function App() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [
+    filters.accountId,
+    filters.categoryId,
+    filters.endDate,
+    filters.isPaid,
+    filters.startDate,
+    filters.type,
+    month,
+    year,
+  ])
 
   useEffect(() => {
-    void loadData()
-  }, [])
+    const timeoutId = window.setTimeout(() => {
+      void loadData({ showLoading: false })
+    }, 0)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [loadData])
 
   function applyMonthToFilters() {
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`

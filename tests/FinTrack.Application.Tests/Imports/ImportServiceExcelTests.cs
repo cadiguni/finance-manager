@@ -456,6 +456,11 @@ public class ImportServiceExcelTests
             return Task.FromResult(false);
         }
 
+        public Task<bool> HasTransactionsAsync(Guid userId, Guid id, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(false);
+        }
+
         public void Remove(Category category)
         {
         }

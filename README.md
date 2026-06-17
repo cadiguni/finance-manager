@@ -69,6 +69,12 @@ docker compose -f infra/docker-compose.yml up --build
 
 Use three terminals.
 
+Prerequisites:
+
+- .NET 10 SDK
+- Node.js and npm
+- Docker, for PostgreSQL or the full stack
+
 Terminal 1: start PostgreSQL:
 
 ```powershell
@@ -286,7 +292,7 @@ Both formats use the same columns:
 - `isPaid`
 - `paymentDate`
 
-Required columns are `description`, `amount`, `type`, `date` and `accountId`. Dates must use `yyyy-MM-dd`.
+Required columns are `description`, `amount` and `date`. `type`, `accountId` and `categoryId` can be provided in the file or resolved from the selected import defaults and keyword rules. Supported date formats include `yyyy-MM-dd`, `dd/MM/yyyy`, `d/M/yyyy`, `dd-MM-yyyy`, `d-M-yyyy`, `dd.MM.yyyy` and `d.M.yyyy`.
 
 `categoryId` can be left empty when a matching active keyword rule exists for the transaction description and type. Higher-priority rules are evaluated first.
 
@@ -299,7 +305,7 @@ Credit card statement requests send:
 - `isPaid`
 - `paymentDate`
 
-The current statement parser expects pasted text extracted from a PDF or copied from a card statement. Each purchase line should follow this shape:
+The current statement parser accepts pasted text, text files, or binary PDF content uploaded by the frontend. Each purchase line should follow this shape after text extraction:
 
 ```text
 01/06 Mercado Central R$ 120,50
@@ -322,7 +328,7 @@ Example card statement preview request:
 }
 ```
 
-The app does not read binary `.pdf` files directly yet. For now, extract or copy the statement text and paste it into the `Fatura` import mode in the frontend.
+Binary `.pdf` extraction depends on the PDF text layer. Scanned/image-only statements may need OCR or manual text correction before import.
 
 ## Notes
 

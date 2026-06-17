@@ -41,6 +41,12 @@ public sealed class CategoryRepository : ICategoryRepository
             .AnyAsync(category => category.UserId == userId && category.ParentCategoryId == id, cancellationToken);
     }
 
+    public async Task<bool> HasTransactionsAsync(Guid userId, Guid id, CancellationToken cancellationToken)
+    {
+        return await _dbContext.Transactions
+            .AnyAsync(transaction => transaction.UserId == userId && transaction.CategoryId == id, cancellationToken);
+    }
+
     public async Task AddAsync(Category category, CancellationToken cancellationToken)
     {
         await _dbContext.Categories.AddAsync(category, cancellationToken);
