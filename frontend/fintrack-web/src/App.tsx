@@ -10,6 +10,7 @@ import {
   Plus,
   RefreshCcw,
   Trash2,
+  Upload,
   Wallet,
   X,
 } from 'lucide-react'
@@ -573,6 +574,18 @@ function App() {
     setExcelContentBase64(await readFileAsBase64(file))
   }
 
+  async function selectCsvFile(file: File | null) {
+    setCsvPreview(null)
+    setCsvContent('')
+
+    if (!file) {
+      return
+    }
+
+    setCsvFileName(file.name)
+    setCsvContent(await readFileAsText(file))
+  }
+
   async function selectCardStatementFile(file: File | null) {
     setCsvPreview(null)
     setCardStatementContent('')
@@ -694,9 +707,17 @@ function App() {
           <div>
             <p className="text-sm font-medium text-teal-700">FinTrack</p>
             <h1 className="text-2xl font-semibold tracking-tight">Dashboard financeiro</h1>
+            <p className="mt-1 text-sm text-slate-500">Acompanhe seus lançamentos e importe extratos em poucos passos.</p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <a
+              className="inline-flex items-center gap-2 rounded-md bg-teal-700 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-800"
+              href="#importacao"
+            >
+              <Upload size={16} />
+              Importar arquivo
+            </a>
             <select
               className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
               value={month}
@@ -771,14 +792,6 @@ function App() {
                 onTogglePaid={togglePaid}
                 transactions={transactions}
               />
-              <ManageLists
-                accounts={accounts}
-                categories={categories}
-                onDeleteAccount={deleteAccount}
-                onDeleteCategory={deleteCategory}
-                onEditAccount={editAccount}
-                onEditCategory={editCategory}
-              />
               <ImportPanel
                 accounts={accounts}
                 cardStatementAccountId={cardStatementAccountId}
@@ -815,6 +828,7 @@ function App() {
                   }
                 }}
                 onContentChange={setCsvContent}
+                onCsvFileChange={(file) => void selectCsvFile(file)}
                 onCsvDefaultAccountIdChange={setCsvDefaultAccountId}
                 onCsvDefaultCategoryIdChange={setCsvDefaultCategoryId}
                 onExcelFileChange={(file) => void selectExcelFile(file)}
@@ -835,6 +849,14 @@ function App() {
                 }}
                 preview={csvPreview}
                 value={csvContent}
+              />
+              <ManageLists
+                accounts={accounts}
+                categories={categories}
+                onDeleteAccount={deleteAccount}
+                onDeleteCategory={deleteCategory}
+                onEditAccount={editAccount}
+                onEditCategory={editCategory}
               />
               <CategorizationPanel
                 categories={categories}
@@ -1300,6 +1322,7 @@ function ImportPanel({
   onCardStatementTextFileChange,
   onCommit,
   onContentChange,
+  onCsvFileChange,
   onCsvDefaultAccountIdChange,
   onCsvDefaultCategoryIdChange,
   onExcelFileChange,
@@ -1337,6 +1360,7 @@ function ImportPanel({
   onCardStatementTextFileChange: (file: File | null) => void
   onCommit: () => void
   onContentChange: (value: string) => void
+  onCsvFileChange: (file: File | null) => void
   onCsvDefaultAccountIdChange: (value: string) => void
   onCsvDefaultCategoryIdChange: (value: string) => void
   onExcelFileChange: (file: File | null) => void
@@ -1360,38 +1384,58 @@ function ImportPanel({
           : Boolean((cardStatementContent.trim() || cardStatementContentBase64) && cardStatementAccountId && cardStatementDueDate)
 
   return (
-    <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="mb-4 flex items-center gap-2">
-        <FileText className="text-teal-700" size={18} />
-        <h2 className="font-semibold">Importacao</h2>
+    <div id="importacao" className="scroll-mt-6 overflow-hidden rounded-xl border border-teal-200 bg-white shadow-sm">
+      <div className="border-b border-teal-100 bg-gradient-to-r from-teal-50 to-white px-5 py-4">
+        <div className="flex items-start gap-3">
+          <span className="rounded-lg bg-teal-700 p-2 text-white">
+            <Upload size={20} />
+          </span>
+          <div>
+            <h2 className="text-lg font-semibold">Importar lançamentos</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Selecione um arquivo, revise os dados encontrados e confirme a importação.
+            </p>
+          </div>
+        </div>
+        <ol className="mt-4 grid gap-2 text-xs font-medium text-slate-600 sm:grid-cols-3">
+          <li className="rounded-md border border-teal-100 bg-white px-3 py-2"><span className="mr-2 text-teal-700">1</span>Selecionar arquivo</li>
+          <li className="rounded-md border border-teal-100 bg-white px-3 py-2"><span className="mr-2 text-teal-700">2</span>Revisar preview</li>
+          <li className="rounded-md border border-teal-100 bg-white px-3 py-2"><span className="mr-2 text-teal-700">3</span>Confirmar importação</li>
+        </ol>
       </div>
-      <div className="grid gap-4 xl:grid-cols-[1fr_320px]">
-        <div className="space-y-3">
-          <div className="inline-flex rounded-md border border-slate-300 bg-white p-1 text-sm">
+      <div className="grid gap-6 p-5 xl:grid-cols-[1fr_300px]">
+        <div className="space-y-4">
+          <div className="grid grid-cols-3 rounded-lg bg-slate-100 p-1 text-sm">
             <button
-              className={`rounded px-3 py-1.5 font-medium ${importMode === 'csv' ? 'bg-slate-950 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+              className={`rounded-md px-3 py-2 font-medium transition ${importMode === 'csv' ? 'bg-white text-teal-800 shadow-sm' : 'text-slate-600 hover:text-slate-950'}`}
               type="button"
               onClick={() => onModeChange('csv')}
             >
               CSV
             </button>
             <button
-              className={`rounded px-3 py-1.5 font-medium ${importMode === 'excel' ? 'bg-slate-950 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+              className={`rounded-md px-3 py-2 font-medium transition ${importMode === 'excel' ? 'bg-white text-teal-800 shadow-sm' : 'text-slate-600 hover:text-slate-950'}`}
               type="button"
               onClick={() => onModeChange('excel')}
             >
               Excel
             </button>
             <button
-              className={`rounded px-3 py-1.5 font-medium ${importMode === 'card' ? 'bg-slate-950 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+              className={`rounded-md px-3 py-2 font-medium transition ${importMode === 'card' ? 'bg-white text-teal-800 shadow-sm' : 'text-slate-600 hover:text-slate-950'}`}
               type="button"
               onClick={() => onModeChange('card')}
             >
-              Fatura/PDF
+              PDF
             </button>
           </div>
           {importMode === 'csv' ? (
             <>
+              <FilePicker
+                accept=".csv,text/csv"
+                description={fileName && value ? `Selecionado: ${fileName}` : 'Arquivo .csv com cabeçalho'}
+                label="Selecionar CSV"
+                onChange={onCsvFileChange}
+              />
               <Input label="Nome do arquivo" value={fileName} onChange={onFileNameChange} />
               <div className="grid gap-3 sm:grid-cols-2">
                 <Select label="Conta padrao" value={csvDefaultAccountId} onChange={onCsvDefaultAccountIdChange} required>
@@ -1408,7 +1452,7 @@ function ImportPanel({
                 </Select>
               </div>
               <TextArea
-                label="CSV"
+                label="Conteúdo do CSV (opcionalmente cole aqui)"
                 onChange={onContentChange}
                 placeholder="date,title,amount"
                 value={value}
@@ -1416,15 +1460,12 @@ function ImportPanel({
             </>
           ) : importMode === 'excel' ? (
             <>
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-700">Arquivo Excel</span>
-                <input
-                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                  className="w-full rounded-md border border-slate-300 px-3 py-2"
-                  type="file"
-                  onChange={(event) => onExcelFileChange(event.target.files?.[0] ?? null)}
-                />
-              </label>
+              <FilePicker
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                description={excelReady ? `Selecionado: ${excelFileName}` : 'Planilha .xlsx'}
+                label="Selecionar Excel"
+                onChange={onExcelFileChange}
+              />
               <Input label="Nome do arquivo" value={excelFileName} onChange={() => undefined} readOnly />
               <Input
                 label="Aba"
@@ -1435,15 +1476,12 @@ function ImportPanel({
             </>
           ) : (
             <>
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-700">Arquivo da fatura</span>
-                <input
-                  accept=".pdf,.txt,.csv,application/pdf,text/plain,text/csv"
-                  className="w-full rounded-md border border-slate-300 px-3 py-2"
-                  type="file"
-                  onChange={(event) => onCardStatementTextFileChange(event.target.files?.[0] ?? null)}
-                />
-              </label>
+              <FilePicker
+                accept=".pdf,.txt,.csv,application/pdf,text/plain,text/csv"
+                description={cardStatementContentBase64 || cardStatementContent ? `Selecionado: ${cardStatementFileName}` : 'Fatura .pdf ou arquivo de texto'}
+                label="Selecionar PDF ou fatura"
+                onChange={onCardStatementTextFileChange}
+              />
               {cardStatementContentBase64 && (
                 <p className="text-xs text-slate-500">PDF carregado. O texto sera extraido pela API no preview/importacao.</p>
               )}
@@ -1483,24 +1521,27 @@ function ImportPanel({
               />
             </>
           )}
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:flex-row">
             <button
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-100"
+              className="flex-1 rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-400"
               disabled={isImporting || !canPreview}
               type="button"
               onClick={onPreview}
             >
-              Preview
+              {isImporting ? 'Processando...' : '1. Revisar arquivo'}
             </button>
             <button
-              className="rounded-md bg-teal-700 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+              className="flex-1 rounded-md bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-slate-300"
               disabled={isImporting || !canCommit}
               type="button"
               onClick={onCommit}
             >
-              Importar validos
+              2. Importar {preview?.validRows ? `${preview.validRows} válido(s)` : 'dados'}
             </button>
           </div>
+          {!preview && (
+            <p className="text-xs text-slate-500">O botão de importação será liberado depois que você revisar o arquivo.</p>
+          )}
           {preview && (
             <div className="rounded-md border border-slate-200">
               <div className="border-b border-slate-200 px-3 py-2 text-sm text-slate-600">
@@ -1527,8 +1568,11 @@ function ImportPanel({
             </div>
           )}
         </div>
-        <div>
-          <h3 className="mb-2 text-sm font-semibold">Historico</h3>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <FileText className="text-slate-500" size={16} />
+            <h3 className="text-sm font-semibold">Histórico recente</h3>
+          </div>
           {history.length === 0 ? (
             <p className="text-sm text-slate-500">Nenhuma importacao realizada.</p>
           ) : (
@@ -1876,6 +1920,37 @@ function FormShell({
       </div>
       {children}
     </div>
+  )
+}
+
+function FilePicker({
+  accept,
+  description,
+  label,
+  onChange,
+}: {
+  accept: string
+  description: string
+  label: string
+  onChange: (file: File | null) => void
+}) {
+  return (
+    <label className="flex cursor-pointer items-center justify-between gap-4 rounded-lg border-2 border-dashed border-teal-200 bg-teal-50/50 px-4 py-4 transition hover:border-teal-400 hover:bg-teal-50">
+      <span>
+        <span className="block text-sm font-semibold text-teal-900">{label}</span>
+        <span className="mt-1 block text-xs text-slate-500">{description}</span>
+      </span>
+      <span className="inline-flex shrink-0 items-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-semibold text-teal-800 shadow-sm ring-1 ring-teal-200">
+        <Upload size={16} />
+        Procurar
+      </span>
+      <input
+        accept={accept}
+        className="sr-only"
+        type="file"
+        onChange={(event) => onChange(event.target.files?.[0] ?? null)}
+      />
+    </label>
   )
 }
 
