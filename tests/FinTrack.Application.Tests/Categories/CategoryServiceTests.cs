@@ -29,6 +29,24 @@ public class CategoryServiceTests
     }
 
     [Fact]
+    public async Task DeleteAsync_WhenCategoryHasChildren_ReturnsFriendlyFailure()
+    {
+        var userId = Guid.NewGuid();
+        var category = CreateCategory(userId);
+        var repository = new FakeCategoryRepository(
+            new[] { category },
+            categoriesWithChildren: new[] { category.Id });
+
+        var result = await new CategoryService(repository)
+            .DeleteAsync(userId, category.Id, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(
+            "Não é possível excluir esta categoria porque ela possui subcategorias.",
+            result.Error);
+    }
+
+    [Fact]
     public async Task DeleteAsync_WhenCategoryHasRecurringRules_ReturnsFailure()
     {
         var userId = Guid.NewGuid();
@@ -88,17 +106,20 @@ public class CategoryServiceTests
     private sealed class FakeCategoryRepository : ICategoryRepository
     {
         private readonly List<Category> _categories;
+        private readonly HashSet<Guid> _categoriesWithChildren;
         private readonly HashSet<Guid> _categoriesWithTransactions;
         private readonly HashSet<Guid> _categoriesWithRecurringRules;
         private readonly HashSet<Guid> _categoriesWithKeywordRules;
 
         public FakeCategoryRepository(
             IEnumerable<Category>? categories = null,
+            IEnumerable<Guid>? categoriesWithChildren = null,
             IEnumerable<Guid>? categoriesWithTransactions = null,
             IEnumerable<Guid>? categoriesWithRecurringRules = null,
             IEnumerable<Guid>? categoriesWithKeywordRules = null)
         {
             _categories = categories?.ToList() ?? new List<Category>();
+            _categoriesWithChildren = categoriesWithChildren?.ToHashSet() ?? new HashSet<Guid>();
             _categoriesWithTransactions = categoriesWithTransactions?.ToHashSet() ?? new HashSet<Guid>();
             _categoriesWithRecurringRules = categoriesWithRecurringRules?.ToHashSet() ?? new HashSet<Guid>();
             _categoriesWithKeywordRules = categoriesWithKeywordRules?.ToHashSet() ?? new HashSet<Guid>();
@@ -129,7 +150,7 @@ public class CategoryServiceTests
 
         public Task<bool> HasChildrenAsync(Guid userId, Guid id, CancellationToken cancellationToken)
         {
-            return Task.FromResult(false);
+            return Task.FromResult(_categoriesWithChildren.Contains(id));
         }
 
         public Task<bool> HasTransactionsAsync(Guid userId, Guid id, CancellationToken cancellationToken)

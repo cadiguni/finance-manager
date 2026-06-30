@@ -8,6 +8,10 @@ using FinTrack.Domain.Enums;
 using System.IO.Compression;
 using System.Security;
 using System.Text;
+using UglyToad.PdfPig.Core;
+using UglyToad.PdfPig.Content;
+using UglyToad.PdfPig.Fonts.Standard14Fonts;
+using UglyToad.PdfPig.Writer;
 
 namespace FinTrack.Application.Tests.Imports;
 
@@ -44,6 +48,35 @@ public class ImportServiceExcelTests
         Assert.Equal(1, preview.ValidRows);
         Assert.Empty(preview.Rows[0].Errors);
         Assert.Equal("Mercado", preview.Rows[0].Description);
+    }
+
+    [Fact]
+    public async Task PreviewExcelAsync_WhenDateIsNumericExcelSerial_ParsesDate()
+    {
+        var fixture = TestFixture.Create();
+        var content = CreateWorkbookBase64(
+            new[]
+            {
+                new[] { "description", "amount", "type", "date", "accountId", "categoryId" },
+                new[]
+                {
+                    "Mercado",
+                    "120.50",
+                    "Expense",
+                    "46223",
+                    fixture.Account.Id.ToString(),
+                    fixture.Category.Id.ToString()
+                }
+            },
+            new HashSet<string> { "D2" });
+
+        var preview = await fixture.Service.PreviewExcelAsync(
+            fixture.UserId,
+            new ExcelPreviewRequest("transactions.xlsx", content, null),
+            CancellationToken.None);
+
+        Assert.Equal(1, preview.ValidRows);
+        Assert.Equal(new DateOnly(2026, 7, 20), preview.Rows[0].Date);
     }
 
     [Fact]
@@ -299,6 +332,70 @@ public class ImportServiceExcelTests
         Assert.Equal("Mercado Central", fixture.TransactionRepository.Transactions[0].Description);
         Assert.Equal(120.50m, fixture.TransactionRepository.Transactions[0].Amount);
         Assert.True(fixture.TransactionRepository.Transactions[0].IsPaid);
+    }
+
+    [Fact]
+    public async Task PreviewCardStatementAsync_WhenPdfHasSeparateLines_PreservesTransactions()
+    {
+        var fixture = TestFixture.Create();
+        fixture.KeywordRuleRepository.Rules.Add(new CategoryKeywordRule
+        {
+            UserId = fixture.UserId,
+            CategoryId = fixture.Category.Id,
+            Category = fixture.Category,
+            Keyword = "manualmarket",
+            TransactionType = TransactionType.Expense,
+            Priority = 10,
+            IsActive = true
+        });
+        var content = CreatePdfBase64(
+            "01/07 ManualMarket PDF 88,90",
+            "02/07 ManualMarket Livraria 35,40");
+
+        var preview = await fixture.Service.PreviewCardStatementAsync(
+            fixture.UserId,
+            new CardStatementPreviewRequest(
+                "statement.pdf",
+                string.Empty,
+                content,
+                fixture.Account.Id,
+                new DateOnly(2026, 7, 25),
+                false,
+                null),
+            CancellationToken.None);
+
+        Assert.Equal(2, preview.ValidRows);
+        Assert.Equal("ManualMarket PDF", preview.Rows[0].Description);
+        Assert.Equal(88.90m, preview.Rows[0].Amount);
+        Assert.Equal("ManualMarket Livraria", preview.Rows[1].Description);
+        Assert.Equal(35.40m, preview.Rows[1].Amount);
+    }
+
+    [Fact]
+    public async Task CommitCsvAsync_WhenNoRowsAreValid_DoesNotRegisterFileAsImported()
+    {
+        var fixture = TestFixture.Create();
+        var request = new CommitCsvImportRequest(
+            "invalid.csv",
+            "description,amount,type,date\nInvalid,abc,Expense,invalid",
+            fixture.Account.Id,
+            fixture.Category.Id);
+
+        var firstResult = await fixture.Service.CommitCsvAsync(
+            fixture.UserId,
+            request,
+            CancellationToken.None);
+        var secondResult = await fixture.Service.CommitCsvAsync(
+            fixture.UserId,
+            request,
+            CancellationToken.None);
+
+        Assert.False(firstResult.IsSuccess);
+        Assert.False(secondResult.IsSuccess);
+        Assert.Equal(
+            "Não foi possível importar o CSV porque nenhuma linha válida foi encontrada.",
+            secondResult.Error);
+        Assert.Empty(fixture.ImportBatchRepository.Batches);
     }
 
     private sealed record TestFixture(
@@ -593,7 +690,9 @@ public class ImportServiceExcelTests
         public Task SaveChangesAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
-    private static string CreateWorkbookBase64(IReadOnlyList<IReadOnlyList<string>> rows)
+    private static string CreateWorkbookBase64(
+        IReadOnlyList<IReadOnlyList<string>> rows,
+        ISet<string>? numericCells = null)
     {
         using var stream = new MemoryStream();
         using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, true))
@@ -639,13 +738,15 @@ public class ImportServiceExcelTests
                   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
                 </Relationships>
                 """);
-            WriteEntry(archive, "xl/worksheets/sheet1.xml", BuildSheetXml(rows));
+            WriteEntry(archive, "xl/worksheets/sheet1.xml", BuildSheetXml(rows, numericCells));
         }
 
         return Convert.ToBase64String(stream.ToArray());
     }
 
-    private static string BuildSheetXml(IReadOnlyList<IReadOnlyList<string>> rows)
+    private static string BuildSheetXml(
+        IReadOnlyList<IReadOnlyList<string>> rows,
+        ISet<string>? numericCells)
     {
         var builder = new StringBuilder();
         builder.AppendLine("""<?xml version="1.0" encoding="UTF-8"?>""");
@@ -659,7 +760,9 @@ public class ImportServiceExcelTests
             {
                 var reference = $"{GetColumnName(columnIndex)}{rowIndex + 1}";
                 var value = SecurityElement.Escape(rows[rowIndex][columnIndex]) ?? string.Empty;
-                builder.AppendLine($"""<c r="{reference}" t="inlineStr"><is><t>{value}</t></is></c>""");
+                builder.AppendLine(numericCells?.Contains(reference) == true
+                    ? $"""<c r="{reference}" t="n"><v>{value}</v></c>"""
+                    : $"""<c r="{reference}" t="inlineStr"><is><t>{value}</t></is></c>""");
             }
 
             builder.AppendLine("</row>");
@@ -668,6 +771,20 @@ public class ImportServiceExcelTests
         builder.AppendLine("</sheetData>");
         builder.AppendLine("</worksheet>");
         return builder.ToString();
+    }
+
+    private static string CreatePdfBase64(params string[] lines)
+    {
+        var builder = new PdfDocumentBuilder();
+        var page = builder.AddPage(PageSize.A4);
+        var font = builder.AddStandard14Font(Standard14Font.Helvetica);
+
+        for (var index = 0; index < lines.Length; index++)
+        {
+            page.AddText(lines[index], 12, new PdfPoint(25, 750 - index * 20), font);
+        }
+
+        return Convert.ToBase64String(builder.Build());
     }
 
     private static string GetColumnName(int columnIndex)

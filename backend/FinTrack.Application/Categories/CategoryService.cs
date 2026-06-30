@@ -95,7 +95,8 @@ public sealed class CategoryService : ICategoryService
 
         if (await _repository.HasChildrenAsync(userId, id, cancellationToken))
         {
-            return Result.Failure("Category has subcategories and cannot be deleted.");
+            return Result.Failure(
+                "Não é possível excluir esta categoria porque ela possui subcategorias.");
         }
 
         if (await _repository.HasTransactionsAsync(userId, id, cancellationToken) ||

@@ -12,6 +12,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using UglyToad.PdfPig;
+using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
 
 namespace FinTrack.Application.Imports;
 
@@ -96,7 +97,7 @@ public sealed class ImportService : IImportService
             string.IsNullOrWhiteSpace(request.FileName) ? "import.csv" : request.FileName.Trim(),
             FileImportType.Csv,
             contentHash,
-            "CSV import has no valid rows.",
+            "Não foi possível importar o CSV porque nenhuma linha válida foi encontrada.",
             cancellationToken);
     }
 
@@ -138,7 +139,7 @@ public sealed class ImportService : IImportService
             string.IsNullOrWhiteSpace(request.FileName) ? "import.xlsx" : request.FileName.Trim(),
             FileImportType.Excel,
             contentHash,
-            "Excel import has no valid rows.",
+            "Não foi possível importar o Excel porque nenhuma linha válida foi encontrada.",
             cancellationToken);
     }
 
@@ -184,7 +185,7 @@ public sealed class ImportService : IImportService
             string.IsNullOrWhiteSpace(request.FileName) ? "card-statement.txt" : request.FileName.Trim(),
             FileImportType.Pdf,
             contentHash,
-            "Card statement import has no valid rows.",
+            "Não foi possível importar o PDF porque nenhum lançamento válido foi encontrado.",
             cancellationToken);
     }
 
@@ -400,6 +401,10 @@ public sealed class ImportService : IImportService
         CancellationToken cancellationToken)
     {
         var validRows = rows.Where(row => row.Errors.Count == 0).ToList();
+        if (validRows.Count == 0)
+        {
+            return Result<ImportBatchDto>.Failure(emptyRowsError);
+        }
 
         var batch = new ImportBatch
         {
@@ -411,7 +416,7 @@ public sealed class ImportService : IImportService
             TotalRows = rows.Count,
             SuccessRows = validRows.Count,
             FailedRows = rows.Count - validRows.Count,
-            Status = validRows.Count == 0 ? FileImportStatus.Failed : FileImportStatus.Completed
+            Status = FileImportStatus.Completed
         };
 
         await _importBatchRepository.AddAsync(batch, cancellationToken);
@@ -436,9 +441,7 @@ public sealed class ImportService : IImportService
 
         await _transactionRepository.SaveChangesAsync(cancellationToken);
 
-        return validRows.Count == 0
-            ? Result<ImportBatchDto>.Failure(emptyRowsError)
-            : Result<ImportBatchDto>.Success(MapToDto(batch));
+        return Result<ImportBatchDto>.Success(MapToDto(batch));
     }
 
     private static string ComputeRowHash(
@@ -595,7 +598,7 @@ public sealed class ImportService : IImportService
         var builder = new StringBuilder();
         foreach (var page in document.GetPages())
         {
-            builder.AppendLine(page.Text);
+            builder.AppendLine(ContentOrderTextExtractor.GetText(page));
         }
 
         return builder.ToString();
@@ -896,10 +899,37 @@ public sealed class ImportService : IImportService
 
     private static DateOnly? TryParseDate(string value)
     {
+        var normalized = value.Trim();
         var formats = new[] { "yyyy-MM-dd", "dd/MM/yyyy", "d/M/yyyy", "dd-MM-yyyy", "d-M-yyyy", "dd.MM.yyyy", "d.M.yyyy" };
-        return DateOnly.TryParseExact(value.Trim(), formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)
-            ? parsed
-            : null;
+        if (DateOnly.TryParseExact(
+                normalized,
+                formats,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var parsed))
+        {
+            return parsed;
+        }
+
+        if (double.TryParse(
+                normalized,
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out var excelSerialDate) &&
+            excelSerialDate is >= 1 and <= 2_958_465)
+        {
+            try
+            {
+                return DateOnly.FromDateTime(
+                    new DateTime(1899, 12, 30).AddDays(excelSerialDate));
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return null;
+            }
+        }
+
+        return null;
     }
 
     private static DateOnly? TryParseOptionalDate(string value)

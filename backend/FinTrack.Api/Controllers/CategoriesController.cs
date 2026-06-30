@@ -72,7 +72,8 @@ public sealed class CategoriesController : ControllerBase
             return result.Error switch
             {
                 "Category not found." => NotFound(),
-                "Category has subcategories and cannot be deleted." => Conflict(new { message = result.Error }),
+                "Não é possível excluir esta categoria porque ela possui subcategorias." =>
+                    Conflict(new { message = result.Error }),
                 "Não é possível excluir esta categoria porque ela está sendo usada em transações, recorrências ou regras de categorização." =>
                     Conflict(new { message = result.Error }),
                 _ => BadRequest(new { message = result.Error })
