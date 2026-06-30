@@ -73,7 +73,8 @@ public sealed class CategoriesController : ControllerBase
             {
                 "Category not found." => NotFound(),
                 "Category has subcategories and cannot be deleted." => Conflict(new { message = result.Error }),
-                "Category has transactions and cannot be deleted." => Conflict(new { message = result.Error }),
+                "Não é possível excluir esta categoria porque ela está sendo usada em transações, recorrências ou regras de categorização." =>
+                    Conflict(new { message = result.Error }),
                 _ => BadRequest(new { message = result.Error })
             };
         }

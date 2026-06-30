@@ -65,6 +65,17 @@ public sealed class TransactionRepository : ITransactionRepository
             .FirstOrDefaultAsync(transaction => transaction.UserId == userId && transaction.Id == id, cancellationToken);
     }
 
+    public async Task<bool> ExistsByImportHashAsync(
+        Guid userId,
+        string importHash,
+        CancellationToken cancellationToken)
+    {
+        return await _dbContext.Transactions
+            .AnyAsync(
+                transaction => transaction.UserId == userId && transaction.ImportHash == importHash,
+                cancellationToken);
+    }
+
     public async Task AddAsync(Transaction transaction, CancellationToken cancellationToken)
     {
         await _dbContext.Transactions.AddAsync(transaction, cancellationToken);

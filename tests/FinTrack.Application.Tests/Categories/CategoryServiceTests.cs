@@ -25,20 +25,83 @@ public class CategoryServiceTests
         var result = await service.DeleteAsync(userId, category.Id, CancellationToken.None);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal("Category has transactions and cannot be deleted.", result.Error);
+        Assert.Equal(BlockedDeletionMessage, result.Error);
     }
+
+    [Fact]
+    public async Task DeleteAsync_WhenCategoryHasRecurringRules_ReturnsFailure()
+    {
+        var userId = Guid.NewGuid();
+        var category = CreateCategory(userId);
+        var repository = new FakeCategoryRepository(
+            new[] { category },
+            categoriesWithRecurringRules: new[] { category.Id });
+
+        var result = await new CategoryService(repository)
+            .DeleteAsync(userId, category.Id, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(BlockedDeletionMessage, result.Error);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenCategoryHasKeywordRules_ReturnsFailure()
+    {
+        var userId = Guid.NewGuid();
+        var category = CreateCategory(userId);
+        var repository = new FakeCategoryRepository(
+            new[] { category },
+            categoriesWithKeywordRules: new[] { category.Id });
+
+        var result = await new CategoryService(repository)
+            .DeleteAsync(userId, category.Id, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(BlockedDeletionMessage, result.Error);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenCategoryIsUnused_RemovesCategory()
+    {
+        var userId = Guid.NewGuid();
+        var category = CreateCategory(userId);
+        var repository = new FakeCategoryRepository(new[] { category });
+
+        var result = await new CategoryService(repository)
+            .DeleteAsync(userId, category.Id, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(await repository.GetAllAsync(userId, CancellationToken.None));
+    }
+
+    private const string BlockedDeletionMessage =
+        "Não é possível excluir esta categoria porque ela está sendo usada em transações, recorrências ou regras de categorização.";
+
+    private static Category CreateCategory(Guid userId) => new()
+    {
+        Id = Guid.NewGuid(),
+        UserId = userId,
+        Name = "Alimentacao",
+        Type = CategoryType.Expense
+    };
 
     private sealed class FakeCategoryRepository : ICategoryRepository
     {
         private readonly List<Category> _categories;
         private readonly HashSet<Guid> _categoriesWithTransactions;
+        private readonly HashSet<Guid> _categoriesWithRecurringRules;
+        private readonly HashSet<Guid> _categoriesWithKeywordRules;
 
         public FakeCategoryRepository(
             IEnumerable<Category>? categories = null,
-            IEnumerable<Guid>? categoriesWithTransactions = null)
+            IEnumerable<Guid>? categoriesWithTransactions = null,
+            IEnumerable<Guid>? categoriesWithRecurringRules = null,
+            IEnumerable<Guid>? categoriesWithKeywordRules = null)
         {
             _categories = categories?.ToList() ?? new List<Category>();
             _categoriesWithTransactions = categoriesWithTransactions?.ToHashSet() ?? new HashSet<Guid>();
+            _categoriesWithRecurringRules = categoriesWithRecurringRules?.ToHashSet() ?? new HashSet<Guid>();
+            _categoriesWithKeywordRules = categoriesWithKeywordRules?.ToHashSet() ?? new HashSet<Guid>();
         }
 
         public Task AddAsync(Category category, CancellationToken cancellationToken)
@@ -72,6 +135,16 @@ public class CategoryServiceTests
         public Task<bool> HasTransactionsAsync(Guid userId, Guid id, CancellationToken cancellationToken)
         {
             return Task.FromResult(_categoriesWithTransactions.Contains(id));
+        }
+
+        public Task<bool> HasRecurringRulesAsync(Guid userId, Guid id, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(_categoriesWithRecurringRules.Contains(id));
+        }
+
+        public Task<bool> HasKeywordRulesAsync(Guid userId, Guid id, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(_categoriesWithKeywordRules.Contains(id));
         }
 
         public void Remove(Category category)

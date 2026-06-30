@@ -6,6 +6,8 @@ public sealed record MonthlySummaryDto(
     decimal TotalIncome,
     decimal TotalExpense,
     decimal Balance,
+    decimal InitialBalance,
+    decimal CurrentBalance,
     IReadOnlyList<CategorySummaryDto> ExpensesByCategory,
     IReadOnlyList<CategorySummaryDto> IncomeByCategory,
     decimal UpcomingPayments,

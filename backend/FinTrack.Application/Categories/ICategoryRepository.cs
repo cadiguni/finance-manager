@@ -9,6 +9,8 @@ public interface ICategoryRepository
     Task<bool> ExistsAsync(Guid userId, Guid id, CancellationToken cancellationToken);
     Task<bool> HasChildrenAsync(Guid userId, Guid id, CancellationToken cancellationToken);
     Task<bool> HasTransactionsAsync(Guid userId, Guid id, CancellationToken cancellationToken);
+    Task<bool> HasRecurringRulesAsync(Guid userId, Guid id, CancellationToken cancellationToken);
+    Task<bool> HasKeywordRulesAsync(Guid userId, Guid id, CancellationToken cancellationToken);
     Task AddAsync(Category category, CancellationToken cancellationToken);
     void Remove(Category category);
     Task SaveChangesAsync(CancellationToken cancellationToken);

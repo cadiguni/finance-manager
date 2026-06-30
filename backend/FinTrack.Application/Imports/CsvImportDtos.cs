@@ -19,6 +19,7 @@ public sealed record CsvImportRowPreviewDto(
     DateOnly? DueDate,
     bool? IsPaid,
     DateOnly? PaymentDate,
+    string? ImportHash,
     IReadOnlyList<string> Errors);
 
 public sealed record ImportBatchDto(

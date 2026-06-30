@@ -17,6 +17,7 @@ public class Transaction
     public DateOnly? PaymentDate { get; set; }
     public Guid? InstallmentGroupId { get; set; }
     public Guid? RecurringRuleId { get; set; }
+    public string? ImportHash { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public User? User { get; set; }

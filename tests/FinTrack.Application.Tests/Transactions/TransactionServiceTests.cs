@@ -121,6 +121,12 @@ public class TransactionServiceTests
                 Transactions.FirstOrDefault(transaction => transaction.UserId == userId && transaction.Id == id));
         }
 
+        public Task<bool> ExistsByImportHashAsync(Guid userId, string importHash, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(Transactions.Any(transaction =>
+                transaction.UserId == userId && transaction.ImportHash == importHash));
+        }
+
         public void Remove(Transaction transaction)
         {
             Transactions.Remove(transaction);
@@ -154,6 +160,11 @@ public class TransactionServiceTests
         }
 
         public Task<bool> HasTransactionsAsync(Guid userId, Guid id, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(false);
+        }
+
+        public Task<bool> HasRecurringRulesAsync(Guid userId, Guid id, CancellationToken cancellationToken)
         {
             return Task.FromResult(false);
         }
@@ -197,6 +208,16 @@ public class TransactionServiceTests
         }
 
         public Task<bool> HasTransactionsAsync(Guid userId, Guid id, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(false);
+        }
+
+        public Task<bool> HasRecurringRulesAsync(Guid userId, Guid id, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(false);
+        }
+
+        public Task<bool> HasKeywordRulesAsync(Guid userId, Guid id, CancellationToken cancellationToken)
         {
             return Task.FromResult(false);
         }

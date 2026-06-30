@@ -7,6 +7,7 @@ public class ImportBatch
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid UserId { get; set; }
     public string FileName { get; set; } = string.Empty;
+    public string? ContentHash { get; set; }
     public FileImportType FileType { get; set; }
     public DateTime ImportedAt { get; set; } = DateTime.UtcNow;
     public int TotalRows { get; set; }

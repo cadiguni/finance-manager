@@ -47,6 +47,18 @@ public sealed class CategoryRepository : ICategoryRepository
             .AnyAsync(transaction => transaction.UserId == userId && transaction.CategoryId == id, cancellationToken);
     }
 
+    public async Task<bool> HasRecurringRulesAsync(Guid userId, Guid id, CancellationToken cancellationToken)
+    {
+        return await _dbContext.RecurringRules
+            .AnyAsync(rule => rule.UserId == userId && rule.CategoryId == id, cancellationToken);
+    }
+
+    public async Task<bool> HasKeywordRulesAsync(Guid userId, Guid id, CancellationToken cancellationToken)
+    {
+        return await _dbContext.CategoryKeywordRules
+            .AnyAsync(rule => rule.UserId == userId && rule.CategoryId == id, cancellationToken);
+    }
+
     public async Task AddAsync(Category category, CancellationToken cancellationToken)
     {
         await _dbContext.Categories.AddAsync(category, cancellationToken);

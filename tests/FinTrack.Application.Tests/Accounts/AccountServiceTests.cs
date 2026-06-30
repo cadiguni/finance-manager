@@ -37,8 +37,50 @@ public class AccountServiceTests
         var result = await service.DeleteAsync(userId, account.Id, CancellationToken.None);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal("Account has transactions and cannot be deleted.", result.Error);
+        Assert.Equal(
+            "Não é possível excluir esta conta porque ela está sendo usada em transações ou recorrências.",
+            result.Error);
     }
+
+    [Fact]
+    public async Task DeleteAsync_WhenAccountHasRecurringRules_ReturnsFailure()
+    {
+        var userId = Guid.NewGuid();
+        var account = CreateAccount(userId);
+        var repository = new FakeAccountRepository(
+            new[] { account },
+            accountsWithRecurringRules: new[] { account.Id });
+
+        var result = await new AccountService(repository)
+            .DeleteAsync(userId, account.Id, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(
+            "Não é possível excluir esta conta porque ela está sendo usada em transações ou recorrências.",
+            result.Error);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenAccountIsUnused_RemovesAccount()
+    {
+        var userId = Guid.NewGuid();
+        var account = CreateAccount(userId);
+        var repository = new FakeAccountRepository(new[] { account });
+
+        var result = await new AccountService(repository)
+            .DeleteAsync(userId, account.Id, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(await repository.GetAllAsync(userId, CancellationToken.None));
+    }
+
+    private static Account CreateAccount(Guid userId) => new()
+    {
+        Id = Guid.NewGuid(),
+        UserId = userId,
+        Name = "Conta Principal",
+        Type = AccountType.BankAccount
+    };
 
     [Fact]
     public async Task UpdateAsync_WhenAccountExists_UpdatesAccount()
@@ -71,13 +113,16 @@ public class AccountServiceTests
     {
         private readonly List<Account> _accounts;
         private readonly HashSet<Guid> _accountsWithTransactions;
+        private readonly HashSet<Guid> _accountsWithRecurringRules;
 
         public FakeAccountRepository(
             IEnumerable<Account>? accounts = null,
-            IEnumerable<Guid>? accountsWithTransactions = null)
+            IEnumerable<Guid>? accountsWithTransactions = null,
+            IEnumerable<Guid>? accountsWithRecurringRules = null)
         {
             _accounts = accounts?.ToList() ?? new List<Account>();
             _accountsWithTransactions = accountsWithTransactions?.ToHashSet() ?? new HashSet<Guid>();
+            _accountsWithRecurringRules = accountsWithRecurringRules?.ToHashSet() ?? new HashSet<Guid>();
         }
 
         public Task AddAsync(Account account, CancellationToken cancellationToken)
@@ -101,6 +146,11 @@ public class AccountServiceTests
         public Task<bool> HasTransactionsAsync(Guid userId, Guid id, CancellationToken cancellationToken)
         {
             return Task.FromResult(_accountsWithTransactions.Contains(id));
+        }
+
+        public Task<bool> HasRecurringRulesAsync(Guid userId, Guid id, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(_accountsWithRecurringRules.Contains(id));
         }
 
         public void Remove(Account account)

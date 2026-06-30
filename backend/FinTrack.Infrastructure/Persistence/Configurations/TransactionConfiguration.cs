@@ -22,6 +22,12 @@ public sealed class TransactionConfiguration : IEntityTypeConfiguration<Transact
             .HasMaxLength(20)
             .IsRequired();
 
+        builder.Property(transaction => transaction.ImportHash)
+            .HasMaxLength(64);
+
+        builder.HasIndex(transaction => new { transaction.UserId, transaction.ImportHash })
+            .IsUnique();
+
         builder.HasOne(transaction => transaction.User)
             .WithMany()
             .HasForeignKey(transaction => transaction.UserId)

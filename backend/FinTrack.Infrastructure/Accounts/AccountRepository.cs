@@ -35,6 +35,12 @@ public sealed class AccountRepository : IAccountRepository
             .AnyAsync(transaction => transaction.UserId == userId && transaction.AccountId == id, cancellationToken);
     }
 
+    public async Task<bool> HasRecurringRulesAsync(Guid userId, Guid id, CancellationToken cancellationToken)
+    {
+        return await _dbContext.RecurringRules
+            .AnyAsync(rule => rule.UserId == userId && rule.AccountId == id, cancellationToken);
+    }
+
     public async Task AddAsync(Account account, CancellationToken cancellationToken)
     {
         await _dbContext.Accounts.AddAsync(account, cancellationToken);

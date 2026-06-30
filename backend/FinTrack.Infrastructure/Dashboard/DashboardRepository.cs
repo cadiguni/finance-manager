@@ -38,6 +38,27 @@ public sealed class DashboardRepository : IDashboardRepository
             .Where(transaction => transaction.Type == TransactionType.Expense)
             .SumAsync(transaction => transaction.Amount, cancellationToken);
 
+        var initialBalance = await _dbContext.Accounts
+            .AsNoTracking()
+            .Where(account => account.UserId == userId)
+            .SumAsync(account => account.InitialBalance, cancellationToken);
+
+        var accumulatedIncome = await _dbContext.Transactions
+            .AsNoTracking()
+            .Where(transaction =>
+                transaction.UserId == userId &&
+                transaction.Date <= endDate &&
+                transaction.Type == TransactionType.Income)
+            .SumAsync(transaction => transaction.Amount, cancellationToken);
+
+        var accumulatedExpense = await _dbContext.Transactions
+            .AsNoTracking()
+            .Where(transaction =>
+                transaction.UserId == userId &&
+                transaction.Date <= endDate &&
+                transaction.Type == TransactionType.Expense)
+            .SumAsync(transaction => transaction.Amount, cancellationToken);
+
         var expensesByCategoryRows = await transactions
             .Where(transaction => transaction.Type == TransactionType.Expense)
             .GroupBy(transaction => new
@@ -92,6 +113,8 @@ public sealed class DashboardRepository : IDashboardRepository
             totalIncome,
             totalExpense,
             totalIncome - totalExpense,
+            initialBalance,
+            initialBalance + accumulatedIncome - accumulatedExpense,
             expensesByCategoryRows
                 .Select(summary => new CategorySummaryDto(summary.CategoryId, summary.CategoryName, summary.Total))
                 .ToList(),

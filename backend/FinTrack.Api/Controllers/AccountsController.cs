@@ -72,7 +72,8 @@ public sealed class AccountsController : ControllerBase
             return result.Error switch
             {
                 "Account not found." => NotFound(),
-                "Account has transactions and cannot be deleted." => Conflict(new { message = result.Error }),
+                "Não é possível excluir esta conta porque ela está sendo usada em transações ou recorrências." =>
+                    Conflict(new { message = result.Error }),
                 _ => BadRequest(new { message = result.Error })
             };
         }

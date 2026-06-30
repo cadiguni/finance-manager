@@ -14,6 +14,12 @@ public sealed class ImportBatchConfiguration : IEntityTypeConfiguration<ImportBa
             .HasMaxLength(260)
             .IsRequired();
 
+        builder.Property(batch => batch.ContentHash)
+            .HasMaxLength(64);
+
+        builder.HasIndex(batch => new { batch.UserId, batch.ContentHash })
+            .IsUnique();
+
         builder.Property(batch => batch.FileType)
             .HasConversion<string>()
             .HasMaxLength(20)

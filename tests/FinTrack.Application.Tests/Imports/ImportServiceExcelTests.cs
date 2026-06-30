@@ -148,6 +148,86 @@ public class ImportServiceExcelTests
     }
 
     [Fact]
+    public async Task CommitCsvAsync_WhenCsvIsValid_ImportsTransactionOnce()
+    {
+        var fixture = TestFixture.Create();
+        var request = CreateCsvRequest(
+            "transactions.csv",
+            fixture.Account.Id,
+            fixture.Category.Id);
+
+        var result = await fixture.Service.CommitCsvAsync(
+            fixture.UserId,
+            request,
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(fixture.TransactionRepository.Transactions);
+        Assert.NotNull(fixture.TransactionRepository.Transactions[0].ImportHash);
+        Assert.Single(fixture.ImportBatchRepository.Batches);
+        Assert.False(string.IsNullOrEmpty(fixture.ImportBatchRepository.Batches[0].ContentHash));
+    }
+
+    [Fact]
+    public async Task CommitCsvAsync_WhenSameFileIsImportedTwice_DoesNotDuplicateTransactions()
+    {
+        var fixture = TestFixture.Create();
+        var request = CreateCsvRequest(
+            "transactions.csv",
+            fixture.Account.Id,
+            fixture.Category.Id);
+
+        var firstResult = await fixture.Service.CommitCsvAsync(
+            fixture.UserId,
+            request,
+            CancellationToken.None);
+        var secondResult = await fixture.Service.CommitCsvAsync(
+            fixture.UserId,
+            request,
+            CancellationToken.None);
+
+        Assert.True(firstResult.IsSuccess);
+        Assert.False(secondResult.IsSuccess);
+        Assert.Equal("Este arquivo já foi importado.", secondResult.Error);
+        Assert.Single(fixture.TransactionRepository.Transactions);
+        Assert.Single(fixture.ImportBatchRepository.Batches);
+    }
+
+    [Fact]
+    public async Task CommitCsvAsync_WhenDifferentFileContainsImportedRow_SkipsDuplicateRow()
+    {
+        var fixture = TestFixture.Create();
+        var firstRequest = CreateCsvRequest(
+            "first.csv",
+            fixture.Account.Id,
+            fixture.Category.Id);
+        var secondRequest = CreateCsvRequest(
+            "second.csv",
+            fixture.Account.Id,
+            fixture.Category.Id,
+            trailingNewLine: true);
+
+        await fixture.Service.CommitCsvAsync(fixture.UserId, firstRequest, CancellationToken.None);
+        var preview = await fixture.Service.PreviewCsvAsync(
+            fixture.UserId,
+            new CsvPreviewRequest(
+                secondRequest.FileName,
+                secondRequest.Content,
+                secondRequest.DefaultAccountId,
+                secondRequest.DefaultCategoryId),
+            CancellationToken.None);
+        var secondResult = await fixture.Service.CommitCsvAsync(
+            fixture.UserId,
+            secondRequest,
+            CancellationToken.None);
+
+        Assert.False(secondResult.IsSuccess);
+        Assert.Single(fixture.TransactionRepository.Transactions);
+        Assert.Equal(0, preview.ValidRows);
+        Assert.Contains("Este lançamento já foi importado.", preview.Rows[0].Errors);
+    }
+
+    [Fact]
     public async Task PreviewCardStatementAsync_WhenKeywordMatches_UsesMatchedCategory()
     {
         var fixture = TestFixture.Create();
@@ -278,6 +358,21 @@ public class ImportServiceExcelTests
         }
     }
 
+    private static CommitCsvImportRequest CreateCsvRequest(
+        string fileName,
+        Guid accountId,
+        Guid categoryId,
+        bool trailingNewLine = false)
+    {
+        var content = "description,amount,type,date\nMercado,120.50,Expense,2026-06-10";
+        if (trailingNewLine)
+        {
+            content += "\n";
+        }
+
+        return new CommitCsvImportRequest(fileName, content, accountId, categoryId);
+    }
+
     private sealed class FakeCategoryKeywordRuleRepository : ICategoryKeywordRuleRepository
     {
         public List<CategoryKeywordRule> Rules { get; } = new();
@@ -356,6 +451,15 @@ public class ImportServiceExcelTests
             return Task.CompletedTask;
         }
 
+        public Task<bool> ExistsByContentHashAsync(
+            Guid userId,
+            string contentHash,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(Batches.Any(batch =>
+                batch.UserId == userId && batch.ContentHash == contentHash));
+        }
+
         public Task SaveChangesAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
@@ -382,6 +486,12 @@ public class ImportServiceExcelTests
         {
             return Task.FromResult(
                 Transactions.FirstOrDefault(transaction => transaction.UserId == userId && transaction.Id == id));
+        }
+
+        public Task<bool> ExistsByImportHashAsync(Guid userId, string importHash, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(Transactions.Any(transaction =>
+                transaction.UserId == userId && transaction.ImportHash == importHash));
         }
 
         public void Remove(Transaction transaction)
@@ -414,6 +524,11 @@ public class ImportServiceExcelTests
         }
 
         public Task<bool> HasTransactionsAsync(Guid userId, Guid id, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(false);
+        }
+
+        public Task<bool> HasRecurringRulesAsync(Guid userId, Guid id, CancellationToken cancellationToken)
         {
             return Task.FromResult(false);
         }
@@ -457,6 +572,16 @@ public class ImportServiceExcelTests
         }
 
         public Task<bool> HasTransactionsAsync(Guid userId, Guid id, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(false);
+        }
+
+        public Task<bool> HasRecurringRulesAsync(Guid userId, Guid id, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(false);
+        }
+
+        public Task<bool> HasKeywordRulesAsync(Guid userId, Guid id, CancellationToken cancellationToken)
         {
             return Task.FromResult(false);
         }

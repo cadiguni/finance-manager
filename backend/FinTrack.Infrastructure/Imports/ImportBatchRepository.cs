@@ -25,6 +25,17 @@ public sealed class ImportBatchRepository : IImportBatchRepository
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<bool> ExistsByContentHashAsync(
+        Guid userId,
+        string contentHash,
+        CancellationToken cancellationToken)
+    {
+        return await _dbContext.ImportBatches
+            .AnyAsync(
+                batch => batch.UserId == userId && batch.ContentHash == contentHash,
+                cancellationToken);
+    }
+
     public async Task AddAsync(ImportBatch batch, CancellationToken cancellationToken)
     {
         await _dbContext.ImportBatches.AddAsync(batch, cancellationToken);

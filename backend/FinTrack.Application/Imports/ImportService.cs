@@ -7,6 +7,7 @@ using FinTrack.Domain.Entities;
 using FinTrack.Domain.Enums;
 using System.Globalization;
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
@@ -77,6 +78,12 @@ public sealed class ImportService : IImportService
         CommitCsvImportRequest request,
         CancellationToken cancellationToken)
     {
+        var contentHash = ComputeHash($"csv\n{request.Content}");
+        if (await _importBatchRepository.ExistsByContentHashAsync(userId, contentHash, cancellationToken))
+        {
+            return Result<ImportBatchDto>.Failure("Este arquivo já foi importado.");
+        }
+
         var rows = await ParseAndValidateAsync(
             userId,
             ParseCsv(request.Content),
@@ -88,6 +95,7 @@ public sealed class ImportService : IImportService
             rows,
             string.IsNullOrWhiteSpace(request.FileName) ? "import.csv" : request.FileName.Trim(),
             FileImportType.Csv,
+            contentHash,
             "CSV import has no valid rows.",
             cancellationToken);
     }
@@ -112,6 +120,12 @@ public sealed class ImportService : IImportService
         CommitExcelImportRequest request,
         CancellationToken cancellationToken)
     {
+        var contentHash = ComputeHash($"excel\n{request.ContentBase64}");
+        if (await _importBatchRepository.ExistsByContentHashAsync(userId, contentHash, cancellationToken))
+        {
+            return Result<ImportBatchDto>.Failure("Este arquivo já foi importado.");
+        }
+
         var rows = await ParseAndValidateAsync(
             userId,
             ParseExcel(request.ContentBase64, request.WorksheetName),
@@ -123,6 +137,7 @@ public sealed class ImportService : IImportService
             rows,
             string.IsNullOrWhiteSpace(request.FileName) ? "import.xlsx" : request.FileName.Trim(),
             FileImportType.Excel,
+            contentHash,
             "Excel import has no valid rows.",
             cancellationToken);
     }
@@ -148,6 +163,13 @@ public sealed class ImportService : IImportService
         CommitCardStatementImportRequest request,
         CancellationToken cancellationToken)
     {
+        var contentHash = ComputeHash(
+            $"card-statement\n{request.ContentBase64 ?? request.Content}");
+        if (await _importBatchRepository.ExistsByContentHashAsync(userId, contentHash, cancellationToken))
+        {
+            return Result<ImportBatchDto>.Failure("Este arquivo já foi importado.");
+        }
+
         var content = ExtractCardStatementContent(request.FileName, request.Content, request.ContentBase64);
         var rows = await ParseAndValidateAsync(
             userId,
@@ -161,6 +183,7 @@ public sealed class ImportService : IImportService
             rows,
             string.IsNullOrWhiteSpace(request.FileName) ? "card-statement.txt" : request.FileName.Trim(),
             FileImportType.Pdf,
+            contentHash,
             "Card statement import has no valid rows.",
             cancellationToken);
     }
@@ -194,6 +217,7 @@ public sealed class ImportService : IImportService
             .ToList();
 
         var rows = new List<CsvImportRowPreviewDto>();
+        var hashesInFile = new HashSet<string>(StringComparer.Ordinal);
         for (var index = 1; index < records.Count; index++)
         {
             var values = records[index];
@@ -320,6 +344,34 @@ public sealed class ImportService : IImportService
                 errors.Add("Category type is incompatible with transaction type.");
             }
 
+            string? importHash = null;
+            if (amount.HasValue &&
+                type.HasValue &&
+                date.HasValue &&
+                accountId.HasValue &&
+                categoryId.HasValue)
+            {
+                importHash = ComputeRowHash(
+                    accountId.Value,
+                    categoryId.Value,
+                    description,
+                    amount.Value,
+                    type.Value,
+                    date.Value,
+                    dueDate,
+                    isPaid,
+                    paymentDate);
+
+                if (!hashesInFile.Add(importHash) ||
+                    await _transactionRepository.ExistsByImportHashAsync(
+                        userId,
+                        importHash,
+                        cancellationToken))
+                {
+                    errors.Add("Este lançamento já foi importado.");
+                }
+            }
+
             rows.Add(new CsvImportRowPreviewDto(
                 index + 1,
                 description,
@@ -331,6 +383,7 @@ public sealed class ImportService : IImportService
                 dueDate,
                 isPaid,
                 paymentDate,
+                importHash,
                 errors));
         }
 
@@ -342,6 +395,7 @@ public sealed class ImportService : IImportService
         IReadOnlyList<CsvImportRowPreviewDto> rows,
         string fileName,
         FileImportType fileType,
+        string contentHash,
         string emptyRowsError,
         CancellationToken cancellationToken)
     {
@@ -351,6 +405,7 @@ public sealed class ImportService : IImportService
         {
             UserId = userId,
             FileName = fileName,
+            ContentHash = contentHash,
             FileType = fileType,
             ImportedAt = DateTime.UtcNow,
             TotalRows = rows.Count,
@@ -374,7 +429,8 @@ public sealed class ImportService : IImportService
                 Date = row.Date!.Value,
                 DueDate = row.DueDate,
                 IsPaid = row.IsPaid ?? false,
-                PaymentDate = row.PaymentDate
+                PaymentDate = row.PaymentDate,
+                ImportHash = row.ImportHash
             }, cancellationToken);
         }
 
@@ -383,6 +439,37 @@ public sealed class ImportService : IImportService
         return validRows.Count == 0
             ? Result<ImportBatchDto>.Failure(emptyRowsError)
             : Result<ImportBatchDto>.Success(MapToDto(batch));
+    }
+
+    private static string ComputeRowHash(
+        Guid accountId,
+        Guid categoryId,
+        string description,
+        decimal amount,
+        TransactionType type,
+        DateOnly date,
+        DateOnly? dueDate,
+        bool isPaid,
+        DateOnly? paymentDate)
+    {
+        var canonicalValue = string.Join(
+            "|",
+            accountId.ToString("N"),
+            categoryId.ToString("N"),
+            description.Trim().ToUpperInvariant(),
+            amount.ToString("0.00", CultureInfo.InvariantCulture),
+            type,
+            date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            dueDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? string.Empty,
+            isPaid,
+            paymentDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? string.Empty);
+
+        return ComputeHash(canonicalValue);
+    }
+
+    private static string ComputeHash(string value)
+    {
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     }
 
     private static List<List<string>> ParseExcel(string contentBase64, string? worksheetName)

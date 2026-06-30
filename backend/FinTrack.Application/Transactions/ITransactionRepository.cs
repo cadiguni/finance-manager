@@ -10,6 +10,10 @@ public interface ITransactionRepository
         CancellationToken cancellationToken);
 
     Task<Transaction?> GetByIdAsync(Guid userId, Guid id, CancellationToken cancellationToken);
+    Task<bool> ExistsByImportHashAsync(
+        Guid userId,
+        string importHash,
+        CancellationToken cancellationToken);
     Task AddAsync(Transaction transaction, CancellationToken cancellationToken);
     void Remove(Transaction transaction);
     Task SaveChangesAsync(CancellationToken cancellationToken);

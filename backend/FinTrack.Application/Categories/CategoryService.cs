@@ -98,9 +98,12 @@ public sealed class CategoryService : ICategoryService
             return Result.Failure("Category has subcategories and cannot be deleted.");
         }
 
-        if (await _repository.HasTransactionsAsync(userId, id, cancellationToken))
+        if (await _repository.HasTransactionsAsync(userId, id, cancellationToken) ||
+            await _repository.HasRecurringRulesAsync(userId, id, cancellationToken) ||
+            await _repository.HasKeywordRulesAsync(userId, id, cancellationToken))
         {
-            return Result.Failure("Category has transactions and cannot be deleted.");
+            return Result.Failure(
+                "Não é possível excluir esta categoria porque ela está sendo usada em transações, recorrências ou regras de categorização.");
         }
 
         _repository.Remove(category);

@@ -88,9 +88,11 @@ public sealed class AccountService : IAccountService
             return Result.Failure("Account not found.");
         }
 
-        if (await _repository.HasTransactionsAsync(userId, id, cancellationToken))
+        if (await _repository.HasTransactionsAsync(userId, id, cancellationToken) ||
+            await _repository.HasRecurringRulesAsync(userId, id, cancellationToken))
         {
-            return Result.Failure("Account has transactions and cannot be deleted.");
+            return Result.Failure(
+                "Não é possível excluir esta conta porque ela está sendo usada em transações ou recorrências.");
         }
 
         _repository.Remove(account);
