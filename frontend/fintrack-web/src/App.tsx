@@ -1544,8 +1544,14 @@ function ImportPanel({
           )}
           {preview && (
             <div className="rounded-md border border-slate-200">
-              <div className="border-b border-slate-200 px-3 py-2 text-sm text-slate-600">
-                {preview.validRows} validas, {preview.invalidRows} invalidas de {preview.totalRows}
+              <div className="grid gap-2 border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm sm:grid-cols-3">
+                <span><strong>{preview.validRows}</strong> válidas de {preview.totalRows}</span>
+                <span className="text-red-700"><strong>{preview.invalidRows}</strong> inválidas</span>
+                <span className="font-semibold text-slate-900">
+                  Total: {currency.format(preview.rows
+                    .filter((row) => row.errors.length === 0 && row.type === 'Expense')
+                    .reduce((total, row) => total + (row.amount ?? 0), 0))}
+                </span>
               </div>
               <div className="max-h-72 overflow-auto">
                 <table className="min-w-full divide-y divide-slate-100 text-xs">
@@ -1578,10 +1584,29 @@ function ImportPanel({
           ) : (
             <div className="space-y-2">
               {history.map((batch) => (
-                <div key={batch.id} className="rounded-md border border-slate-100 px-3 py-2 text-sm">
-                  <p className="font-medium">{batch.fileName}</p>
-                  <p className="text-xs text-slate-500">
-                    {batch.status} - {batch.successRows} sucesso, {batch.failedRows} falha
+                <div key={batch.id} className="rounded-md border border-slate-200 bg-white px-3 py-3 text-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="min-w-0 truncate font-semibold" title={batch.fileName}>{batch.fileName}</p>
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                      Concluído
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(batch.importedAt))}
+                  </p>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <div className="rounded bg-slate-50 px-2 py-1.5">
+                      <p className="text-[11px] text-slate-500">Despesas</p>
+                      <p className="font-semibold text-red-700">{currency.format(batch.expenseAmount)}</p>
+                    </div>
+                    <div className="rounded bg-slate-50 px-2 py-1.5">
+                      <p className="text-[11px] text-slate-500">Receitas</p>
+                      <p className="font-semibold text-emerald-700">{currency.format(batch.incomeAmount)}</p>
+                    </div>
+                  </div>
+                  <p className="mt-2 text-xs text-slate-600">
+                    {batch.successRows} importados
+                    {batch.failedRows > 0 ? ` · ${batch.failedRows} com falha` : ' · nenhuma falha'}
                   </p>
                 </div>
               ))}

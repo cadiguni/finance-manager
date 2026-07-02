@@ -11,6 +11,12 @@ internal static class DemoSeedIds
     public static readonly Guid FoodCategoryId = Guid.Parse("33333333-3333-3333-3333-333333333332");
     public static readonly Guid HousingCategoryId = Guid.Parse("33333333-3333-3333-3333-333333333333");
     public static readonly Guid TransportCategoryId = Guid.Parse("33333333-3333-3333-3333-333333333334");
+    public static readonly Guid EntertainmentCategoryId = Guid.Parse("33333333-3333-3333-3333-333333333335");
+    public static readonly Guid HealthCategoryId = Guid.Parse("33333333-3333-3333-3333-333333333336");
+    public static readonly Guid ShoppingCategoryId = Guid.Parse("33333333-3333-3333-3333-333333333337");
+    public static readonly Guid EducationCategoryId = Guid.Parse("33333333-3333-3333-3333-333333333338");
+    public static readonly Guid InsuranceCategoryId = Guid.Parse("33333333-3333-3333-3333-333333333339");
+    public static readonly Guid OtherExpensesCategoryId = Guid.Parse("33333333-3333-3333-3333-333333333340");
 
     public static readonly Guid SalaryTransactionId = Guid.Parse("44444444-4444-4444-4444-444444444441");
     public static readonly Guid GroceriesTransactionId = Guid.Parse("44444444-4444-4444-4444-444444444442");

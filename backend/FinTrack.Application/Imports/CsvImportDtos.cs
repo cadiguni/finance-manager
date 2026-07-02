@@ -30,4 +30,6 @@ public sealed record ImportBatchDto(
     int TotalRows,
     int SuccessRows,
     int FailedRows,
+    decimal IncomeAmount,
+    decimal ExpenseAmount,
     FileImportStatus Status);

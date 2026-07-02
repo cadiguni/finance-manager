@@ -64,6 +64,54 @@ public sealed class CategoryConfiguration : IEntityTypeConfiguration<Category>
                 Name = "Transporte",
                 Type = CategoryType.Expense,
                 CreatedAt = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new Category
+            {
+                Id = DemoSeedIds.EntertainmentCategoryId,
+                UserId = DemoSeedIds.UserId,
+                Name = "Assinaturas e entretenimento",
+                Type = CategoryType.Expense,
+                CreatedAt = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new Category
+            {
+                Id = DemoSeedIds.HealthCategoryId,
+                UserId = DemoSeedIds.UserId,
+                Name = "Saude",
+                Type = CategoryType.Expense,
+                CreatedAt = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new Category
+            {
+                Id = DemoSeedIds.ShoppingCategoryId,
+                UserId = DemoSeedIds.UserId,
+                Name = "Compras",
+                Type = CategoryType.Expense,
+                CreatedAt = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new Category
+            {
+                Id = DemoSeedIds.EducationCategoryId,
+                UserId = DemoSeedIds.UserId,
+                Name = "Educacao",
+                Type = CategoryType.Expense,
+                CreatedAt = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new Category
+            {
+                Id = DemoSeedIds.InsuranceCategoryId,
+                UserId = DemoSeedIds.UserId,
+                Name = "Seguros",
+                Type = CategoryType.Expense,
+                CreatedAt = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new Category
+            {
+                Id = DemoSeedIds.OtherExpensesCategoryId,
+                UserId = DemoSeedIds.UserId,
+                Name = "Outros",
+                Type = CategoryType.Expense,
+                CreatedAt = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc)
             });
     }
 }

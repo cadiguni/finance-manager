@@ -13,6 +13,8 @@ public class ImportBatch
     public int TotalRows { get; set; }
     public int SuccessRows { get; set; }
     public int FailedRows { get; set; }
+    public decimal IncomeAmount { get; set; }
+    public decimal ExpenseAmount { get; set; }
     public FileImportStatus Status { get; set; } = FileImportStatus.Pending;
 
     public User? User { get; set; }

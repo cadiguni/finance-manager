@@ -333,6 +333,17 @@ public sealed class ImportService : IImportService
                 category = await _categoryRepository.GetByIdAsync(userId, categoryId.Value, cancellationToken);
             }
 
+            if (category is null &&
+                categoryId is null &&
+                type == TransactionType.Expense)
+            {
+                category = (await _categoryRepository.GetAllAsync(userId, cancellationToken))
+                    .FirstOrDefault(item =>
+                        item.Type is CategoryType.Expense or CategoryType.Both &&
+                        string.Equals(item.Name, "Outros", StringComparison.OrdinalIgnoreCase));
+                categoryId = category?.Id;
+            }
+
             if (category is null)
             {
                 errors.Add("Category not found.");
@@ -416,6 +427,12 @@ public sealed class ImportService : IImportService
             TotalRows = rows.Count,
             SuccessRows = validRows.Count,
             FailedRows = rows.Count - validRows.Count,
+            IncomeAmount = validRows
+                .Where(row => row.Type == TransactionType.Income)
+                .Sum(row => row.Amount!.Value),
+            ExpenseAmount = validRows
+                .Where(row => row.Type == TransactionType.Expense)
+                .Sum(row => row.Amount!.Value),
             Status = FileImportStatus.Completed
         };
 
@@ -976,6 +993,8 @@ public sealed class ImportService : IImportService
             batch.TotalRows,
             batch.SuccessRows,
             batch.FailedRows,
+            batch.IncomeAmount,
+            batch.ExpenseAmount,
             batch.Status);
     }
 }

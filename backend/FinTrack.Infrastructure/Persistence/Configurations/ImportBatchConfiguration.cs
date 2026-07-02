@@ -17,6 +17,9 @@ public sealed class ImportBatchConfiguration : IEntityTypeConfiguration<ImportBa
         builder.Property(batch => batch.ContentHash)
             .HasMaxLength(64);
 
+        builder.Property(batch => batch.IncomeAmount).HasPrecision(18, 2);
+        builder.Property(batch => batch.ExpenseAmount).HasPrecision(18, 2);
+
         builder.HasIndex(batch => new { batch.UserId, batch.ContentHash })
             .IsUnique();
 

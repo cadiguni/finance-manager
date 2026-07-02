@@ -172,6 +172,8 @@ export type ImportBatch = {
   totalRows: number
   successRows: number
   failedRows: number
+  incomeAmount: number
+  expenseAmount: number
   status: FileImportStatus
 }
 
